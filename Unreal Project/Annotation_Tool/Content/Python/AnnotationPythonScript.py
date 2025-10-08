@@ -2,11 +2,58 @@ import unreal
 import sys
 from functools import partial
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QMainWindow, QSlider,QVBoxLayout, QLabel, QCheckBox, QComboBox, QGridLayout, QBoxLayout, QGridLayout
+from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QMainWindow, QSlider,QVBoxLayout, QLabel, QCheckBox, QComboBox, QGridLayout, QBoxLayout, QGridLayout, QDialog
+
 
 #TO DO:
 #make colour selection menu
 #make the tool (good luck)
+coloursArray = (
+        "black",
+        "grey",
+        "white",
+        "red",
+        "orange",
+        "yellow",
+        "green",
+        "blue",
+        "cyan",
+        "magenta"
+
+)
+
+class ColourWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        colourLayout = QGridLayout()
+
+        gridX = 0
+        gridY = 0
+
+        self.setLayout(colourLayout)
+        self.colour_window = QMainWindow()
+        #self.colour_window.setParent(self)
+        self.colour_window.setFixedSize(QSize(100, 100))
+        #ColourWindow.window = ColourWindow()
+        #ColourWindow.window.setObjectName("colourWindow")
+        #ColourWindow.window.setWindowTitle("Colour Picker")
+        self.setLayout(colourLayout)
+        for x in (coloursArray):
+            self.colourButton = QPushButton()
+            self.colourButton.setStyleSheet(f"background-color : {x}")
+            self.colourButton.setMaximumWidth(25)
+            colourLayout.addWidget(self.colourButton, gridX, gridY)
+            gridY = gridY + 1
+            if gridY > 4:
+                gridX = gridX + 1
+                gridY = 0
+            self.colourButton.clicked.connect(self.ColourButtonClicked)
+        
+    def ColourButtonClicked():
+        pass
+            
+
+
 class UnrealToolWindow(QWidget):
     def __init__ (self, parent = None):
        
@@ -20,12 +67,7 @@ class UnrealToolWindow(QWidget):
         # Create a Click Event that when the button is clicked it will call the function
         # ButtonClicked()
         currentColour = ("cyan")
-        coloursArray = (
-                "black",
-                "grey",
-                "white",
 
-        )
  
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setMinimum(0)
@@ -49,7 +91,7 @@ class UnrealToolWindow(QWidget):
 
         self.colourPickerLabel = QLabel("Line Colour:")
 
-        self.colourPickerButton.clicked.connect(self.colourButtonClicked)
+        self.colourPickerButton.clicked.connect(self.colourPickerButtonClicked)
  
         ##################################
  
@@ -76,7 +118,7 @@ class UnrealToolWindow(QWidget):
         unreal.log("Slider was moved to: " + str(value))
         self.sliderLabel.setText(str(value))
     
-    def colourButtonClicked(self, currentColour):
+    def colourPickerButtonClicked(self, currentColour):
         unreal.log("BUTTON CLICKED")
         self.colourWindow = ColourWindow()
         self.colourWindow.show()
@@ -97,18 +139,4 @@ def launchWindow():
     UnrealToolWindow.window.show()
     unreal.parent_external_window_to_slate(UnrealToolWindow.window.winId())
 
-class ColourWindow(QWidget):
-    def __init__(self):
-        super().__init__()
-        layout = QVBoxLayout()
-        self.label = QLabel("Another Window")
-        layout.addWidget(self.label)
-        self.setLayout(layout)
-        self.colour_window = QMainWindow()
-        self.colour_window.setParent(self)
-        self.colour_window.setFixedSize(QSize(100, 100))
-        ColourWindow.window = ColourWindow()
-        ColourWindow.window.setObjectName("colourWindow")
-        ColourWindow.window.setWindowTitle("Colour Picker")
- 
 launchWindow()
