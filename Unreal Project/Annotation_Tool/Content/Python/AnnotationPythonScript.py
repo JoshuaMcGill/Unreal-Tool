@@ -183,6 +183,10 @@ class TransparentWindow(QWidget):
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton:
             print("Hello you fool")
+            world = unreal.UnrealEditorSubsystem().get_editor_world()
+            mousePos = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
+            mouseInfo = unreal.PlayerController.deproject_screen_position_to_world(mousePos)
+            print (mouseInfo)
  
 def launchWindow():
     if QApplication.instance():
