@@ -4,7 +4,7 @@ import keyboard
 from collections import deque
 from collections.abc import Iterable
 import sys
-from PySide6 import QtCore
+from PySide6 import QtCore, QtGui
 from unreal import SystemLibrary
 from functools import partial
 from PySide6.QtCore import QSize, Qt
@@ -170,6 +170,15 @@ class TransparentWindow(QWidget):
         self.transparent_window = QMainWindow()
         self.transparent_window.setFixedSize(QSize(3000, 3000))
         self.transparent_window.setMinimumSize(QSize(3000, 3000))
+        palette = QtGui.QPalette()
+        palette.setColorGroup
+        # palette.setColor(QtGui.QPalette.color, QColor("#01000000"))
+        palette.setColor(QtGui.QPalette.ColorRole.Window, "#000000")
+        self.setPalette(palette)
+        self.setWindowFlags(QtCore.Qt.FramelessWindowHint)
+        self.setWindowOpacity(0.01)
+        # self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        
     
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton:
