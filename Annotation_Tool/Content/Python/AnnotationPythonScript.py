@@ -3,7 +3,7 @@ import sys
 from unreal import SystemLibrary
 from functools import partial
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QMainWindow, QSlider,QVBoxLayout, QLabel, QCheckBox, QComboBox, QGridLayout, QBoxLayout, QGridLayout, QDialog
+from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QMainWindow, QSlider, QVBoxLayout, QLabel, QCheckBox, QComboBox, QGridLayout, QBoxLayout, QGridLayout, QDialog
 
 
 #TO DO:
@@ -162,15 +162,28 @@ class SplineActor():
     EAS = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     # viewport = unreal.Viewport()
     # camLocation = unreal.Viewport.get_view_rotation(viewport)
-    cameraManager = unreal.PlayerCameraManager()
-    camLocation = unreal.EditorLevelLibrary.get_level_viewport_camera_info()
-    unreal.log(camLocation)
-    # actorClass = unreal.StaticMeshActor
-    # componentClass = unreal.StaticMeshComponent
-    # location = unreal.Vector(0, 0, 0)
-    # staticMeshActor = EAS.spawn_actor_from_class(actorClass, camLocation)
-    # staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
+    # camLocation = unreal.EditorLevelLibrary.get_level_viewport_camera_info()
+    UES = unreal.UnrealEditorSubsystem()
+    camLocation = unreal.UnrealEditorSubsystem.get_level_viewport_camera_info(UES)
+    # print (camLocation)
+    cameraValues = []
+    
+    for x in camLocation:
+        # print(type(x))
+        cameraValues.append(x)
 
-    # staticMeshActor.get_component_by_class(componentClass).set_static_mesh(staticMesh)
-    #SystemLibrary.line_trace_single(start=camLocation, end=)
-    #location = unreal.Vector
+    print(cameraValues[0])
+    # unreal.log(camLocation)
+
+    mouse = unreal.MouseInputDeviceState()
+    print(mouse)
+
+    actorClass = unreal.StaticMeshActor
+    componentClass = unreal.StaticMeshComponent
+    location = unreal.Vector(0, 0, 0)
+    staticMeshActor = EAS.spawn_actor_from_class(actorClass, cameraValues[0])
+    staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
+
+    staticMeshActor.get_component_by_class(componentClass).set_static_mesh(staticMesh)
+    # SystemLibrary.line_trace_single(start=camLocation, end=)
+    location = unreal.Vector
