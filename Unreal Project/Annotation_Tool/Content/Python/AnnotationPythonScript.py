@@ -1,6 +1,6 @@
 import unreal
-from pynput.keyboard import Key, Listener
-import keyboard
+# from pynput.keyboard import Key, Listener
+# import keyboard
 from collections import deque
 from collections.abc import Iterable
 import sys
@@ -15,6 +15,22 @@ import time
 #TO DO:
 #make colour selection menu (returning to this later)
 #make a "start drawing" button on the UI that opens a transparent window that covers the whole screen. this way it can detect key inputs AND stop me moving about the camera using the mouse. Esc to close it
+
+#gonna have to make the 'convert mouse position to world space' function myself:
+#get the world location and rotation of the camera,
+#find the forward vector of the camera,
+#add to that vector a multiplied version of the mouse's 2d coordinates (fiddle with it) and add some relative z offset
+
+#FIGURING OUT LOCATION DIFF
+#find midpoint of viewport
+#find position of mouse RELATIVE to midpoint (mouse pos - midpoint)
+
+#FUNCTIONALITY BREAKDOWN
+#   IN MOUSE MOVE EVENT:
+#       get current mouse location as a variable
+#       check if current mouse location is a certain distance away from previous mouse location
+#       if true set current mouse location as old mouse location and create a spline point at the current mouse location
+
 #make the tool (good luck)
 coloursArray = (
         "black",
@@ -34,9 +50,87 @@ selectedColour = "background-color : green"
 
 toolRunning = True
 EAS = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+
+isDrawing = False
+
+world = unreal.UnrealEditorSubsystem().get_editor_world()
+mousePos = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
+oldMousePos = mousePos
  
- 
- 
+def CreateSplineBlueprint():
+    file_exists = unreal.Paths.directory_exists("/Game/SplineBlueprint")
+    if file_exists == False:
+        print("FILE DOES NOT EXIST!!!")
+        package_path = "/Game"
+        factory = unreal.BlueprintFactory()
+        factory.set_editor_property("parent_class", unreal.Actor)
+        #make the blueprint
+        asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
+        blueprint = asset_tools.create_asset('SplineBlueprint', package_path, None, factory)
+        #get the root data handle
+        subsystem = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
+        blueprint_handle = subsystem.k2_gather_subobject_data_for_blueprint(blueprint)[0]
+        #get blueprint utility
+        blueprint_library = unreal.SubobjectDataBlueprintFunctionLibrary()
+        #choose component type
+        component_type = 'SplineMesh'
+        asset_editor_property_name = ''
+        asset_path = ''
+        #choose component type
+        if 'Blueprint' == component_type:
+            new_class = unreal.ChildActorComponent
+            asset_editor_property_name = 'child_actor_class'
+            asset_path = '/Game/Blueprints/BP_Character'
+        elif 'StaticMesh' == component_type:
+            new_class = unreal.StaticMeshComponent
+            asset_editor_property_name = 'static_mesh'              
+            asset_path = '/Game/Environments/SM_House'
+        elif 'SkeletalMesh' == component_type:
+            new_class = unreal.SkeletalMeshComponent
+            asset_editor_property_name = 'skeletal_mesh'
+            asset_path = '/Game/Characters/SK_Skeleton'
+        elif 'SplineMesh' == component_type:
+            new_class = unreal.SplineMeshComponent
+            asset_editor_property_name = 'spline_mesh'
+            asset_path = '/Engine/BasicShapes/Cube.Cube'
+
+        #add sub component
+        params = unreal.AddNewSubobjectParams(parent_handle=blueprint_handle, new_class=new_class, blueprint_context=blueprint)
+        sub_handle, fail_reason = subsystem.add_new_subobject(params)
+        if not fail_reason.is_empty():
+            raise Exception("ERROR from sub_object_subsystem.add_new_subobject: {fail_reason}" )
+
+        # attach
+        subsystem.attach_subobject( blueprint_handle, sub_handle )
+
+        new_class = unreal.SplineComponent
+        asset_editor_property_name = 'spline'
+
+        params = unreal.AddNewSubobjectParams(parent_handle=blueprint_handle, new_class=new_class, blueprint_context=blueprint)
+        sub_handle, fail_reason = subsystem.add_new_subobject(params)
+        if not fail_reason.is_empty():
+            raise Exception("ERROR from sub_object_subsystem.add_new_subobject: {fail_reason}" )
+
+        # attach
+        subsystem.attach_subobject( blueprint_handle, sub_handle )
+        # get object and component
+        sub_data = blueprint_library.get_data(sub_handle)
+        sub_component = blueprint_library.get_object(sub_data)
+
+        # # set static mesh asset
+        # asset = unreal.EditorAssetLibrary.load_asset(asset_path)
+        # if asset is not None:
+        #     sub_component.set_editor_property(asset_editor_property_name, asset)
+
+        # set relative location
+        location, is_valid = unreal.StringLibrary.conv_string_to_vector('(X=-208.000000,Y=-1877.000000,Z=662.000000)')
+        sub_component.set_editor_property('RelativeLocation', location)
+    else:
+        print("FILE EXISTS!!!")
+
+
+CreateSplineBlueprint()
+
 class UnrealToolWindow(QWidget):
     def __init__ (self, parent = None):
        
@@ -176,17 +270,86 @@ class TransparentWindow(QWidget):
         palette.setColor(QtGui.QPalette.ColorRole.Window, "#000000")
         self.setPalette(palette)
         self.setWindowFlags(QtCore.Qt.FramelessWindowHint)
-        self.setWindowOpacity(0.01)
+        self.setWindowOpacity(0.1)
         # self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
         
     
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton:
             print("Hello you fool")
+            isDrawing = True
             world = unreal.UnrealEditorSubsystem().get_editor_world()
+            # player = unreal.PlayerController()
             mousePos = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
-            mouseInfo = unreal.PlayerController.deproject_screen_position_to_world(mousePos)
-            print (mouseInfo)
+            oldMousePos = mousePos
+            screenResolution = (1920, 1080)
+            screenMidPoint = (1920/2, 1080/2)
+            relativeMouseCoords = mousePos - screenMidPoint
+            print (f"MOUSE POS: {mousePos}")
+            UES = unreal.UnrealEditorSubsystem()
+            camLocation = unreal.UnrealEditorSubsystem.get_level_viewport_camera_info(UES)
+            # print (camLocation)
+            cameraValues = []
+        
+            for x in camLocation:
+                # print(type(x))
+                cameraValues.append(x)
+        
+            print(cameraValues[0])
+            vForward = unreal.MathLibrary.get_forward_vector(cameraValues[1])
+            vUp = unreal.MathLibrary.get_up_vector(cameraValues[1])
+            vRight = unreal.MathLibrary.get_right_vector(cameraValues[1])
+            spawnLocation = cameraValues[0] + (vForward * 1000)
+            correctedLocation = (spawnLocation.x + (relativeMouseCoords.x), spawnLocation.y + (relativeMouseCoords.y), spawnLocation.z)
+            # correctedLocation = (cameraValues[0].x + (vForward.x * 1000), cameraValues[0].y + (vUp.y * relativeMouseCoords.y), cameraValues[0].z + (vRight.z * relativeMouseCoords.x))
+            print(f"SPAWN LOCATION: {spawnLocation}")
+            # mouseInfo = unreal.PlayerController.deproject_screen_position_to_world(player, mousePos.x, mousePos.y)
+            # print (mouseInfo)
+            # hud = unreal.HUD()
+            # mouseInfo = unreal.HUD.deproject(hud, mousePos.x, mousePos.y)
+            # print (mouseInfo)
+            # world = unreal.Viewport.get_viewport_world(self)
+            forward = unreal.Vector.FORWARD
+            print(forward)
+            # actorClass = unreal.StaticMeshActor
+            # componentClass = unreal.StaticMeshComponent
+            # location = unreal.Vector(0, 0, 200)
+            # staticMeshActor = EAS.spawn_actor_from_class(actorClass, spawnLocation)
+            # staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
+            # staticMeshActor.set_actor_rotation(cameraValues[1], False)
+            # staticMeshActor.add_actor_local_offset((0, relativeMouseCoords.x, -relativeMouseCoords.y), False, False)
+        
+            # staticMeshActor.get_component_by_class(componentClass).set_static_mesh(staticMesh)
+
+            # actorClass = unreal.SplineMeshActor
+            # Drawing = EAS.spawn_actor_from_class(actorClass, spawnLocation)
+            # Drawing.set_actor_rotation(cameraValues[1], False)
+            # Drawing.add_actor_local_offset((0, relativeMouseCoords.x, -relativeMouseCoords.y), False, False)
+            # staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
+            # Drawing.get_component_by_class(componentClass).set_static_mesh(staticMesh)
+
+            actorClass = unreal.Actor
+            componentClass = unreal.SplineMeshComponent
+            staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
+            Drawing = EAS.spawn_actor_from_class(actorClass, spawnLocation)
+            Drawing.set_actor_rotation(cameraValues[1], False)
+            Drawing.add_actor_local_offset((0, relativeMouseCoords.x, -relativeMouseCoords.y), False, False)
+            unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(componentClass, '/All/Game', 'SplineMesh')
+
+            Drawing.get_component_by_class(componentClass).set_static_mesh(staticMesh)
+            splineAttr = Drawing.get_component_by_class(unreal.SplineComponent).__getattribute__()
+            print(splineAttr)
+            
+
+    def mouseReleaseEvent(self, event):
+        isDrawing = False
+        
+    def mouseMoveEvent(self, event):
+        unreal.log(mousePos)
+
+    def keyPressEvent(self, event):
+        if event.key() == QtCore.Qt.key_1:
+            TransparentWindow.destroy()
  
 def launchWindow():
     if QApplication.instance():
@@ -219,6 +382,9 @@ class SplineActor():
         cameraValues.append(x)
  
     print(cameraValues[0])
+    vForward = unreal.MathLibrary.get_forward_vector(cameraValues[1])
+    spawnLocation = cameraValues[0] + (vForward * 1000)
+    print(f"SPAWN LOCATION: {spawnLocation}")
     # unreal.log(camLocation)
  
     mouse = unreal.MouseInputDeviceState()
@@ -228,7 +394,7 @@ class SplineActor():
     actorClass = unreal.StaticMeshActor
     componentClass = unreal.StaticMeshComponent
     location = unreal.Vector(0, 0, 200)
-    staticMeshActor = EAS.spawn_actor_from_class(actorClass, cameraValues[0])
+    staticMeshActor = EAS.spawn_actor_from_class(actorClass, spawnLocation)
     staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
  
     staticMeshActor.get_component_by_class(componentClass).set_static_mesh(staticMesh)
@@ -236,106 +402,3 @@ class SplineActor():
 
     DelBase = unreal.KeyEvent
     print (DelBase)
-
-
-
-# class PyTick():
-
-#     _delegate_handle = None
-#     _current = None
-#     schedule = None
-
-#     def __init__(self):
-#         self.schedule = deque()
-#         self._delegate_handle = unreal.register_slate_post_tick_callback(self._callback)
-
-#     def _callback(self, _):
-#         if self._current is None:
-#             if self.schedule:
-#                 self._current = self.schedule.popleft()
-
-#             else:
-#                 print ('Done Jobs')
-#                 unreal.unregister_slate_post_tick_callback(self._delegate_handle)
-#                 return
-            
-#         try:
-#             task = next(self._current)
-
-#             if task is not None and isinstance(task, Iterable):
-
-#                 self.schedule.appendleft(self._current)
-#                 self._current = task
-
-#         except StopIteration:
-#             self._current = None
-
-#         except:
-#             self._current = None
-#             raise
-    
-# def my_loop():
-#     for i in range(10):
-#         print('Tick A %s'% i)
-#         yield my_inner_loop()
-
-# def my_inner_loop():
-#     for i in range(2):
-#         print ('Tick B %s'% i)
-#         yield
-
-# def checkInput():
-#     # if SplineActor.RMB == True:
-#     #     print("HELLO")
-#     #     yield checkInput()
-#     if keyboard.is_pressed('q'):
-#         print("HELLO")
-#         actorClass = unreal.StaticMeshActor
-#         componentClass = unreal.StaticMeshComponent
-#         location = unreal.Vector(0, 0, 0)
-#         staticMeshActor = EAS.spawn_actor_from_class(actorClass, location)
-#         staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
-
-#         staticMeshActor.get_component_by_class(componentClass).set_static_mesh(staticMesh)
-#         py_tick.schedule.append(checkInput())
-#     else:
-#         return
-
-# py_tick = PyTick()
-# py_tick.schedule.append(checkInput())
-
-
-###############################################
-
-# keyInfo = unreal.KeyboardInputDeviceState()
-# print (keyInfo)
-
-# def on_press(key):
-#     print('{0} pressed'.format(key))
-
-# def on_release(key):
-#     print('{0} released'.format(key))
-#     if key == Key.esc:
-#         return False
-    
-# with Listener(
-#     on_press=on_press,
-#     on_release=on_release) as listener: listener.join()
-# while True:
-#     print ("hello")
-#     break
-#     try:
-#         if keyboard.is_pressed('q'):
-#             print("HELLO")
-#             # actorClass = unreal.StaticMeshActor
-#             # componentClass = unreal.StaticMeshComponent
-#             # location = unreal.Vector(0, 0, 0)
-#             # staticMeshActor = EAS.spawn_actor_from_class(actorClass, location)
-#             # staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
-        
-#             # staticMeshActor.get_component_by_class(componentClass).set_static_mesh(staticMesh)
-#     except:
-#         break
-
-
-
