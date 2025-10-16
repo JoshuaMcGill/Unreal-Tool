@@ -31,6 +31,15 @@ import time
 #       check if current mouse location is a certain distance away from previous mouse location
 #       if true set current mouse location as old mouse location and create a spline point at the current mouse location
 
+# ADD CALIBRATION!!
+
+#ORDER OF OPERATIONS FOR TODAY:
+# [DONE] make drawing and calibration window cover whole screen when opened
+#add calibration functionality (literally just changes the value of the public screenMidpoint variable and then closes the window)
+# [DONE] make Esc or Enter close the drawing window
+#fix the issue with creating the spline blueprint attempting to overwrite the other one
+#Implement spline point creation functionality
+
 #make the tool (good luck)
 coloursArray = (
         "black",
@@ -56,7 +65,12 @@ isDrawing = False
 world = unreal.UnrealEditorSubsystem().get_editor_world()
 mousePos = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
 oldMousePos = mousePos
- 
+
+screenMidpoint = mousePos
+
+def printScreenMidpoint():
+    print(screenMidpoint)
+
 def CreateSplineBlueprint():
     file_exists = unreal.Paths.directory_exists("/Game/SplineBlueprint")
     if file_exists == False:
@@ -126,10 +140,10 @@ def CreateSplineBlueprint():
         location, is_valid = unreal.StringLibrary.conv_string_to_vector('(X=-208.000000,Y=-1877.000000,Z=662.000000)')
         sub_component.set_editor_property('RelativeLocation', location)
     else:
-        print("FILE EXISTS!!!")
+        pass
 
 
-CreateSplineBlueprint()
+# CreateSplineBlueprint()
 
 class UnrealToolWindow(QWidget):
     def __init__ (self, parent = None):
@@ -173,6 +187,10 @@ class UnrealToolWindow(QWidget):
         self.drawButton = QPushButton("Start Drawing")
         self.drawButton.setMaximumWidth(200)
         self.drawButton.clicked.connect(self.drawButtonClicked)
+
+        self.calibrateButton = QPushButton("Calibrate")
+        self.calibrateButton.setMaximumWidth(200)
+        self.calibrateButton.clicked.connect(self.calibrateButtonClicked)
  
         ##################################
  
@@ -186,7 +204,8 @@ class UnrealToolWindow(QWidget):
         layout.addWidget(self.slider, 1, 2)
         layout.addWidget(self.colourPickerLabel, 2, 0)
         layout.addWidget(self.colourPickerButton, 2, 2)
-        layout.addWidget(self.drawButton, 3, 2)
+        layout.addWidget(self.calibrateButton, 3, 2)
+        layout.addWidget(self.drawButton, 4, 2)
  
         container = QWidget()
         container.setLayout(layout)
@@ -219,11 +238,11 @@ class UnrealToolWindow(QWidget):
         self.transparentWindow = TransparentWindow()
         self.transparentWindow.show()
 
-    # def keyPressEvent(self, event):
-    #     print(event.key())
-    #     # if event.key() == Qt.Key_Space:
-    #     #     print("Hello")
-   
+    def calibrateButtonClicked(self):
+        unreal.log("Started Calibrating")
+        self.calibrateWindow = CalibrateWindow()
+        self.calibrateWindow.show()
+
 class ColourWindow(QWidget):
     def __init__(self, parent = UnrealToolWindow):
         super().__init__()
@@ -253,6 +272,7 @@ class ColourWindow(QWidget):
        
     def ColourButtonClicked(self):
         colour = self.sender().styleSheet()
+        global buttonColour
         buttonColour = colour
         selectedColour = self.sender().styleSheet()
         mainWindow = UnrealToolWindow()
@@ -262,8 +282,9 @@ class TransparentWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.transparent_window = QMainWindow()
-        self.transparent_window.setFixedSize(QSize(3000, 3000))
-        self.transparent_window.setMinimumSize(QSize(3000, 3000))
+        # self.transparent_window.setFixedSize(QSize(3000, 3000))
+        # self.transparent_window.setMaximumSize(QSize(100, 100))
+        self.setMinimumSize(QSize(2000, 2000))
         palette = QtGui.QPalette()
         palette.setColorGroup
         # palette.setColor(QtGui.QPalette.color, QColor("#01000000"))
@@ -348,8 +369,8 @@ class TransparentWindow(QWidget):
         unreal.log(mousePos)
 
     def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.key_1:
-            TransparentWindow.destroy()
+        if event.key() == QtCore.Qt.Key_Escape:
+            self.destroy()
  
 def launchWindow():
     if QApplication.instance():
@@ -364,7 +385,32 @@ def launchWindow():
     UnrealToolWindow.window.setWindowTitle("Annotation Tool")
     UnrealToolWindow.window.show()
     unreal.parent_external_window_to_slate(UnrealToolWindow.window.winId())
- 
+
+class CalibrateWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.calibrate_window = QMainWindow()
+        self.setMinimumSize(QSize(2000, 2000))
+        palette = QtGui.QPalette()
+        palette.setColorGroup
+        # palette.setColor(QtGui.QPalette.color, QColor("#01000000"))
+        palette.setColor(QtGui.QPalette.ColorRole.Window, "#000000")
+        self.setPalette(palette)
+        self.setWindowFlags(QtCore.Qt.FramelessWindowHint)
+        self.setWindowOpacity(0.1)
+        # self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            world = unreal.UnrealEditorSubsystem().get_editor_world()
+            global screenMidpoint
+            screenMidpoint = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
+            printScreenMidpoint()
+            self.destroy()
+    
+    def keyPressEvent(self, event):
+        if event.key() == QtCore.Qt.Key_Escape:
+            self.destroy()
 launchWindow()
  
 class SplineActor():
