@@ -35,9 +35,9 @@ import time
 
 #ORDER OF OPERATIONS FOR TODAY:
 # [DONE] make drawing and calibration window cover whole screen when opened
-#add calibration functionality (literally just changes the value of the public screenMidpoint variable and then closes the window)
+# [DONE] add calibration functionality (literally just changes the value of the public screenMidpoint variable and then closes the window)
 # [DONE] make Esc or Enter close the drawing window
-#fix the issue with creating the spline blueprint attempting to overwrite the other one
+# [DONE] fix the issue with creating the spline blueprint attempting to overwrite the other one
 #Implement spline point creation functionality
 
 #make the tool (good luck)
@@ -73,7 +73,7 @@ def printScreenMidpoint():
 
 def CreateSplineBlueprint():
     file_exists = unreal.Paths.directory_exists("/Game/SplineBlueprint")
-    if file_exists == False:
+    if file_exists == True:
         print("FILE DOES NOT EXIST!!!")
         package_path = "/Game"
         factory = unreal.BlueprintFactory()
@@ -137,13 +137,13 @@ def CreateSplineBlueprint():
         #     sub_component.set_editor_property(asset_editor_property_name, asset)
 
         # set relative location
-        location, is_valid = unreal.StringLibrary.conv_string_to_vector('(X=-208.000000,Y=-1877.000000,Z=662.000000)')
-        sub_component.set_editor_property('RelativeLocation', location)
+        # location, is_valid = unreal.StringLibrary.conv_string_to_vector('(X=-208.000000,Y=-1877.000000,Z=662.000000)')
+        # sub_component.set_editor_property('RelativeLocation', location)
     else:
         pass
 
 
-# CreateSplineBlueprint()
+CreateSplineBlueprint()
 
 class UnrealToolWindow(QWidget):
     def __init__ (self, parent = None):
@@ -299,13 +299,11 @@ class TransparentWindow(QWidget):
         if event.button() == QtCore.Qt.LeftButton:
             print("Hello you fool")
             isDrawing = True
-            world = unreal.UnrealEditorSubsystem().get_editor_world()
             # player = unreal.PlayerController()
+            global mousePos
             mousePos = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
             oldMousePos = mousePos
-            screenResolution = (1920, 1080)
-            screenMidPoint = (1920/2, 1080/2)
-            relativeMouseCoords = mousePos - screenMidPoint
+            relativeMouseCoords = mousePos - screenMidpoint
             print (f"MOUSE POS: {mousePos}")
             UES = unreal.UnrealEditorSubsystem()
             camLocation = unreal.UnrealEditorSubsystem.get_level_viewport_camera_info(UES)
@@ -321,7 +319,7 @@ class TransparentWindow(QWidget):
             vUp = unreal.MathLibrary.get_up_vector(cameraValues[1])
             vRight = unreal.MathLibrary.get_right_vector(cameraValues[1])
             spawnLocation = cameraValues[0] + (vForward * 1000)
-            correctedLocation = (spawnLocation.x + (relativeMouseCoords.x), spawnLocation.y + (relativeMouseCoords.y), spawnLocation.z)
+            correctedLocation = (spawnLocation.x + (relativeMouseCoords.x * 1), spawnLocation.y + (relativeMouseCoords.y * 1), spawnLocation.z)
             # correctedLocation = (cameraValues[0].x + (vForward.x * 1000), cameraValues[0].y + (vUp.y * relativeMouseCoords.y), cameraValues[0].z + (vRight.z * relativeMouseCoords.x))
             print(f"SPAWN LOCATION: {spawnLocation}")
             # mouseInfo = unreal.PlayerController.deproject_screen_position_to_world(player, mousePos.x, mousePos.y)
@@ -352,7 +350,7 @@ class TransparentWindow(QWidget):
             actorClass = unreal.Actor
             componentClass = unreal.SplineMeshComponent
             staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
-            Drawing = EAS.spawn_actor_from_class(actorClass, spawnLocation)
+            Drawing = EAS.spawn_actor_from_class(Blueprint, spawnLocation)
             Drawing.set_actor_rotation(cameraValues[1], False)
             Drawing.add_actor_local_offset((0, relativeMouseCoords.x, -relativeMouseCoords.y), False, False)
             unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(componentClass, '/All/Game', 'SplineMesh')
