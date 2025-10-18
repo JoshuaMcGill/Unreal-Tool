@@ -322,7 +322,7 @@ class TransparentWindow(QWidget):
             vRight = unreal.MathLibrary.get_right_vector(cameraValues[1])
             global spawnLocation
             spawnLocation = cameraValues[0] + (vForward * 750)
-            correctedLocation = (spawnLocation.x + (relativeMouseCoords.x * 1), spawnLocation.y + (relativeMouseCoords.y * 1), spawnLocation.z)
+            correctedLocation = (spawnLocation.x + (relativeMouseCoords.x * 0.5), spawnLocation.y + (relativeMouseCoords.y * 0.5), spawnLocation.z)
             # correctedLocation = (cameraValues[0].x + (vForward.x * 1000), cameraValues[0].y + (vUp.y * relativeMouseCoords.y), cameraValues[0].z + (vRight.z * relativeMouseCoords.x))
             print(f"SPAWN LOCATION: {spawnLocation}")
             # mouseInfo = unreal.PlayerController.deproject_screen_position_to_world(player, mousePos.x, mousePos.y)
@@ -362,7 +362,7 @@ class TransparentWindow(QWidget):
             coordSpace = unreal.SplineCoordinateSpace
             Drawing.get_component_by_class(componentClass).set_static_mesh(staticMesh)
             Drawing.get_component_by_class(unreal.SplineComponent).clear_spline_points(update_spline = True)
-            Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point(spawnLocation, coordSpace.WORLD, update_spline = True)
+            Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point((0, 0, 0), coordSpace.LOCAL, update_spline = True)
 
     def mouseReleaseEvent(self, event):
         isDrawing = False
@@ -372,12 +372,13 @@ class TransparentWindow(QWidget):
         global mousePos
         currentMousePos = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
         relativeMouseCoords = currentMousePos - screenMidpoint
-        correctedLocation = (spawnLocation.x, spawnLocation.y + relativeMouseCoords.x, spawnLocation.z - relativeMouseCoords.y)
+        # correctedLocation = (spawnLocation.x, spawnLocation.y + relativeMouseCoords.x, spawnLocation.z - relativeMouseCoords.y)
+        correctedLocation = (0, relativeMouseCoords.x, -relativeMouseCoords.y)
         posDiff = currentMousePos - mousePos
         if abs(posDiff.x) >=10 or abs(posDiff.y) >= 10:
             print("PLACE SPLINE POINT NOW!")
             mousePos = currentMousePos
-            Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point(correctedLocation, unreal.SplineCoordinateSpace.WORLD, update_spline = True)
+            Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point(correctedLocation, unreal.SplineCoordinateSpace.LOCAL, update_spline = True)
 
 
     def keyPressEvent(self, event):
