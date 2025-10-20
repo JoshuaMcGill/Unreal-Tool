@@ -363,6 +363,10 @@ class TransparentWindow(QWidget):
             Drawing.get_component_by_class(componentClass).set_static_mesh(staticMesh)
             Drawing.get_component_by_class(unreal.SplineComponent).clear_spline_points(update_spline = True)
             Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point((0, 0, 0), coordSpace.LOCAL, update_spline = True)
+            global splinePoint
+            global splineIndex
+            splineIndex = 0
+            splinePoint = Drawing.get_component_by_class(unreal.SplineComponent).get_spline_point_at(splineIndex, coordSpace.LOCAL)
 
     def mouseReleaseEvent(self, event):
         isDrawing = False
@@ -375,10 +379,28 @@ class TransparentWindow(QWidget):
         # correctedLocation = (spawnLocation.x, spawnLocation.y + relativeMouseCoords.x, spawnLocation.z - relativeMouseCoords.y)
         correctedLocation = (0, relativeMouseCoords.x, -relativeMouseCoords.y)
         posDiff = currentMousePos - mousePos
-        if abs(posDiff.x) >=10 or abs(posDiff.y) >= 10:
+        if abs(posDiff.x) >=20 or abs(posDiff.y) >= 20:
             print("PLACE SPLINE POINT NOW!")
-            mousePos = currentMousePos
+            global splineIndex
+            coordSpace = unreal.SplineCoordinateSpace
+            splineComp = Drawing.get_component_by_class(unreal.SplineComponent)
+            oldPointData = unreal.SplineComponent.get_local_location_and_tangent_at_spline_point(splineComp, splineIndex-1)
+            global splinePoint
+            global previousSplinePoint
+            print (splineIndex)
+            # splinePoint = Drawing.get_component_by_class(unreal.SplineComponent).get_spline_point_at(splineIndex, coordSpace.LOCAL)
+            newPointData = unreal.SplineComponent.get_local_location_and_tangent_at_spline_point(splineComp, splineIndex)
             Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point(correctedLocation, unreal.SplineCoordinateSpace.LOCAL, update_spline = True)
+            mousePos = currentMousePos
+            staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
+            Drawing.get_component_by_class(unreal.SplineMeshComponent).set_static_mesh(staticMesh)
+            CurrentMesh = Drawing.get_component_by_class(unreal.SplineMeshComponent)
+            CurrentMesh.set_start_and_end(oldPointData[0], oldPointData[1], newPointData[0], newPointData[1], update_mesh=True)
+            unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(unreal.SplineMeshComponent, '/All/Game', 'SplineMesh')
+            splineIndex = splineIndex + 1
+            # previousSplinePoint = splinePoint
+            print(f"Old Point Data = {oldPointData}")
+            print(f"New Point Data = {newPointData}")
 
 
     def keyPressEvent(self, event):
