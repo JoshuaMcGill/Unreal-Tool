@@ -394,13 +394,15 @@ class TransparentWindow(QWidget):
             mousePos = currentMousePos
             staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
             Drawing.get_component_by_class(unreal.SplineMeshComponent).set_static_mesh(staticMesh)
-            CurrentMesh = Drawing.get_component_by_class(unreal.SplineMeshComponent)
+            MeshComponents = Drawing.get_components_by_class(unreal.SplineMeshComponent)
+            meshCompLength = MeshComponents.__len__()
+            CurrentMesh = MeshComponents[meshCompLength - 1]
             CurrentMesh.set_start_and_end(oldPointData[0], oldPointData[1], newPointData[0], newPointData[1], update_mesh=True)
+            CurrentMesh.set_static_mesh(staticMesh)
             unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(unreal.SplineMeshComponent, '/All/Game', 'SplineMesh')
             splineIndex = splineIndex + 1
             # previousSplinePoint = splinePoint
-            print(f"Old Point Data = {oldPointData}")
-            print(f"New Point Data = {newPointData}")
+            print(meshCompLength)
 
 
     def keyPressEvent(self, event):
