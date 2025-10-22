@@ -60,6 +60,8 @@ selectedColour = "background-color : green"
 toolRunning = True
 EAS = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 
+meshArray = []
+
 isDrawing = False
 
 world = unreal.UnrealEditorSubsystem().get_editor_world()
@@ -67,6 +69,9 @@ mousePos = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
 oldMousePos = mousePos
 
 screenMidpoint = mousePos
+
+BFL = unreal.SubobjectDataBlueprintFunctionLibrary
+SDS = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
 
 def printScreenMidpoint():
     print(screenMidpoint)
@@ -81,6 +86,7 @@ def CreateSplineBlueprint():
         #make the blueprint
         asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
         SplineClass = unreal.Class
+        global blueprint
         blueprint = asset_tools.create_asset('SplineBlueprint', package_path, unreal.Blueprint, factory)
         #get the root data handle
         subsystem = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
@@ -294,7 +300,7 @@ class TransparentWindow(QWidget):
         self.setWindowOpacity(0.1)
         # self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
         
-    
+
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton:
             print("Hello you fool")
@@ -368,8 +374,31 @@ class TransparentWindow(QWidget):
             splineIndex = 0
             splinePoint = Drawing.get_component_by_class(unreal.SplineComponent).get_spline_point_at(splineIndex, coordSpace.LOCAL)
 
+    def get_sub_handle_object(sub_handle):
+        obj = BFL.get_object(BFL.get_data(sub_handle))
+        return obj
+    
+    def add_component(self, root_data_handle, subsystem, blueprint, new_class, name):
+        sub_handle, fail_reason = subsystem.add_new_subobject(
+            params = unreal.AddNewSubobjectParams(
+                parent_handle=root_data_handle,
+                new_class=new_class,
+                blueprint_context=blueprint
+            )
+        )
+        if not fail_reason.is_empty():
+            raise Exception(f"ERROR from sub_object_subsystem.add_new_subobject: {fail_reason}")
+        
+        subsystem.rename_subobject(handle=sub_handle, new_name=unreal.Text(name))
+        subsystem.attach_subobject(owner_handle=root_data_handle, child_to_add_handle=sub_handle)
+        obj = BFL.get_object(BFL.get_data(sub_handle))
+        return sub_handle, obj
+    
     def mouseReleaseEvent(self, event):
         isDrawing = False
+        # if event.button() == QtCore.Qt.LeftButton:
+        #     AGU = unreal.ActorGroupingUtils
+        #     unreal.ActorGroupingUtils.group_actors(AGU, meshArray)
         
     def mouseMoveEvent(self, event):
         global world
@@ -425,25 +454,51 @@ class TransparentWindow(QWidget):
             # CurrentMesh = compArray[0]
             # CurrentMesh.set_start_and_end(oldPointData[0], oldPointData[1], newPointData[0], newPointData[1], update_mesh=True)
             # CurrentMesh.set_static_mesh(staticMesh)
+            # root_data_handle = SDS.k2_gather_subobject_data_for_blueprint(blueprint)[0]
             global splineIndex
             coordSpace = unreal.SplineCoordinateSpace
             staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
             splineComp = Drawing.get_component_by_class(unreal.SplineComponent)
             Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point(correctedLocation, unreal.SplineCoordinateSpace.LOCAL, update_spline = True)
             points = []
-            points.append(splineComp.get_spline_point_at(splineIndex, coordSpace.LOCAL))
+            points.append(splineComp.get_spline_point_at(splineIndex, coordSpace.WORLD))
             for point in points:
-                oldPointData = unreal.SplineComponent.get_local_location_and_tangent_at_spline_point(splineComp, splineIndex-1)
-                newPointData = unreal.SplineComponent.get_local_location_and_tangent_at_spline_point(splineComp, splineIndex)
-                CurrentMesh = unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(unreal.SplineMeshComponent, '/All/Game', f'{splineIndex}')
-                CurrentMesh.set_start_and_end(oldPointData[0], oldPointData[1], newPointData[0], newPointData[1], update_mesh=True)
-                CurrentMesh.set_static_mesh(staticMesh)
+                oldPointData = unreal.SplineComponent.get_location_and_tangent_at_spline_point(splineComp, splineIndex-1, coordSpace.WORLD)
+                newPointData = unreal.SplineComponent.get_location_and_tangent_at_spline_point(splineComp, splineIndex, coordSpace.WORLD)
+
+                MeshactorClass = unreal.SplineMeshActor
+                MeshActor = EAS.spawn_actor_from_class(MeshactorClass, (0, 0, 0))
+                MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_static_mesh(staticMesh)
+                MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_start_and_end(oldPointData[0], oldPointData[1], newPointData[0], newPointData[1], update_mesh=True)
+                MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_forward_axis(unreal.SplineMeshAxis.X)
+                # global meshArray
+                # meshArray.append[MeshActor]
+                # CurrentMesh = unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(unreal.SplineMeshComponent, '/All/Game', f'{splineIndex}')
+                # print(unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(unreal.SplineMeshComponent, '/All/Game', f'{splineIndex}'))
+                # CurrentMesh.set_start_and_end(oldPointData[0], oldPointData[1], newPointData[0], newPointData[1], update_mesh=True)
+                # CurrentMesh.set_static_mesh(staticMesh)
+
+
+            #     sub_handle, Mesh = self.add_component(
+            #         root_data_handle,
+            #         subsystem=SDS,
+            #         blueprint=Drawing,
+            #         new_class=unreal.SplineMeshComponent,
+            #         name=f"Mesh{splineIndex}")
+            #     assert isinstance(Mesh, unreal.SplineMeshComponent)
+            #     Mesh.set_static_mesh(staticMesh)
+            #     Mesh.set_start_and_end(oldPointData[0], oldPointData[1], newPointData[0], newPointData[1], update_mesh=True)
+            #     # scene_handle, scene = add_component(root_data_handle, SDS, Drawing, unreal.sceneComponent, name='Scene')
+            #     # sub_handle, Mesh = add_component(scene_handle, subsystem=SDS, blueprint=Drawing, new_class=unreal.SplineMeshComponent, name=f"Mesh{splineIndex}")
+
+            #     assert isinstance()
             mousePos = currentMousePos
             splineIndex = splineIndex + 1
+
+
             # compArray = Drawing.get_components_by_class(unreal.SplineMeshComponent)
             # compArray.reverse()
             # CurrentMesh = compArray[0]
-
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Escape:
             self.destroy()
