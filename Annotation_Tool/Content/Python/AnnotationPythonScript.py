@@ -8,7 +8,7 @@ from PySide6 import QtCore, QtGui
 from unreal import SystemLibrary
 from functools import partial
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QMainWindow, QSlider, QVBoxLayout, QLabel, QCheckBox, QComboBox, QGridLayout, QBoxLayout, QGridLayout, QDialog
+from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QMainWindow, QSlider, QVBoxLayout, QLabel, QCheckBox, QComboBox, QGridLayout, QBoxLayout, QGridLayout, QDialog, QColorDialog
 import time
  
  
@@ -40,6 +40,17 @@ import time
 # [DONE] fix the issue with creating the spline blueprint attempting to overwrite the other one
 #Implement spline point creation functionality
 
+
+# TO DO 23/10:
+# [DONE] change mesh to be a cylinder
+# [DONE] Sort out mesh scaling and assign it to the slider
+# Switch out high-poly cylinder for more low poly one. Either by just modelling and importing one from blender or by figuring out how to use the unreal modelling tool in python
+# Give the spline a material
+# Create a material parameter and assign it to the currently selected colour
+# [DONE] Fix alignment issue when drawing further away from the calibrated midpoint
+# [DONE] Group mesh components after finishing stroke
+
+
 #make the tool (good luck)
 coloursArray = (
         "black",
@@ -55,12 +66,11 @@ coloursArray = (
  
 )
  
-selectedColour = "background-color : green"
+selectedColour = "background-color : #ff0000"
+currentColour = "#ff0000"
 
 toolRunning = True
 EAS = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
-
-meshArray = []
 
 isDrawing = False
 
@@ -70,6 +80,8 @@ oldMousePos = mousePos
 
 screenMidpoint = mousePos
 
+sliderValue = 0.2
+
 BFL = unreal.SubobjectDataBlueprintFunctionLibrary
 SDS = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
 
@@ -77,8 +89,7 @@ def printScreenMidpoint():
     print(screenMidpoint)
 
 def CreateSplineBlueprint():
-    file_exists = unreal.Paths.directory_exists("/Game/SplineBlueprint")
-    if file_exists == True:
+    if unreal.EditorAssetLibrary.does_directory_exist("/Game/SplineBlueprint"):
         print("FILE DOES NOT EXIST!!!")
         package_path = "/Game"
         factory = unreal.BlueprintFactory()
@@ -94,35 +105,35 @@ def CreateSplineBlueprint():
         #get blueprint utility
         blueprint_library = unreal.SubobjectDataBlueprintFunctionLibrary()
         #choose component type
-        component_type = 'SplineMesh'
-        asset_editor_property_name = ''
-        asset_path = ''
-        #choose component type
-        if 'Blueprint' == component_type:
-            new_class = unreal.ChildActorComponent
-            asset_editor_property_name = 'child_actor_class'
-            asset_path = '/Game/Blueprints/BP_Character'
-        elif 'StaticMesh' == component_type:
-            new_class = unreal.StaticMeshComponent
-            asset_editor_property_name = 'static_mesh'              
-            asset_path = '/Game/Environments/SM_House'
-        elif 'SkeletalMesh' == component_type:
-            new_class = unreal.SkeletalMeshComponent
-            asset_editor_property_name = 'skeletal_mesh'
-            asset_path = '/Game/Characters/SK_Skeleton'
-        elif 'SplineMesh' == component_type:
-            new_class = unreal.SplineMeshComponent
-            asset_editor_property_name = 'spline_mesh'
-            asset_path = '/Engine/BasicShapes/Cube.Cube'
+        # component_type = 'SplineMesh'
+        # asset_editor_property_name = ''
+        # asset_path = ''
+        # #choose component type
+        # if 'Blueprint' == component_type:
+        #     new_class = unreal.ChildActorComponent
+        #     asset_editor_property_name = 'child_actor_class'
+        #     asset_path = '/Game/Blueprints/BP_Character'
+        # elif 'StaticMesh' == component_type:
+        #     new_class = unreal.StaticMeshComponent
+        #     asset_editor_property_name = 'static_mesh'              
+        #     asset_path = '/Game/Environments/SM_House'
+        # elif 'SkeletalMesh' == component_type:
+        #     new_class = unreal.SkeletalMeshComponent
+        #     asset_editor_property_name = 'skeletal_mesh'
+        #     asset_path = '/Game/Characters/SK_Skeleton'
+        # elif 'SplineMesh' == component_type:
+        #     new_class = unreal.SplineMeshComponent
+        #     asset_editor_property_name = 'spline_mesh'
+        #     asset_path = '/Engine/BasicShapes/Cube.Cube'
 
-        #add sub component
-        params = unreal.AddNewSubobjectParams(parent_handle=blueprint_handle, new_class=new_class, blueprint_context=blueprint)
-        sub_handle, fail_reason = subsystem.add_new_subobject(params)
-        if not fail_reason.is_empty():
-            raise Exception("ERROR from sub_object_subsystem.add_new_subobject: {fail_reason}" )
+        # #add sub component
+        # params = unreal.AddNewSubobjectParams(parent_handle=blueprint_handle, new_class=new_class, blueprint_context=blueprint)
+        # sub_handle, fail_reason = subsystem.add_new_subobject(params)
+        # if not fail_reason.is_empty():
+        #     raise Exception("ERROR from sub_object_subsystem.add_new_subobject: {fail_reason}" )
 
-        # attach
-        subsystem.attach_subobject( blueprint_handle, sub_handle )
+        # # attach
+        # subsystem.attach_subobject( blueprint_handle, sub_handle )
 
         new_class = unreal.SplineComponent
         asset_editor_property_name = 'spline'
@@ -151,6 +162,27 @@ def CreateSplineBlueprint():
 
 CreateSplineBlueprint()
 
+# def CreateMeshObject():
+#     MOC = unreal.ModelingObjectsCreationAPI
+#     cylinder = unreal.PrimitiveComponent.
+#     params = unreal.CreateMeshObjectParams()
+#     MOC.create_mesh_object()
+#     pass
+
+
+def CreateMaterial():
+    assetTools = unreal.AssetToolsHelpers.get_asset_tools()
+    materialEditingLibrary = unreal.MaterialEditingLibrary
+    editorAssetLibrary = unreal.EditorAssetLibrary
+    if editorAssetLibrary.does_directory_exist("/Game/M_Spline"):
+        assetTools.create_asset("M_Spline", "/Game", unreal.Material, unreal.MaterialFactoryNew())
+        baseMaterial = unreal.EditorAssetLibrary.find_asset_data("/Game/M_Spline")
+        print(baseMaterial)
+    else:
+        pass
+
+CreateMaterial()
+
 class UnrealToolWindow(QWidget):
     def __init__ (self, parent = None):
        
@@ -167,13 +199,13 @@ class UnrealToolWindow(QWidget):
  
  
         self.slider = QSlider(Qt.Horizontal)
-        self.slider.setMinimum(0)
+        self.slider.setMinimum(1)
         self.slider.setMaximum(50)
-        self.slider.setSliderPosition(5)
+        self.slider.setSliderPosition(2)
         self.slider.valueChanged.connect(self.sliderChanged)
  
         self.sliderLabel = QLabel()
-        self.sliderLabel.setText("5")
+        self.sliderLabel.setText("2")
         #self.sliderLabel.setAlignment(Qt.AlignJustify)
  
         self.sliderName = QLabel("Line Width:")
@@ -184,7 +216,9 @@ class UnrealToolWindow(QWidget):
  
         self.colourPickerButton = QPushButton()
         self.colourPickerButton.setMaximumWidth(30)
-        self.colourPickerButton.setStyleSheet("background-color : cyan")
+        self.colourPickerButton.setStyleSheet(f"""
+                                              background-color: #ffffff,
+                                              color: #fbb03b""")
  
         self.colourPickerLabel = QLabel("Line Colour:")
  
@@ -221,14 +255,16 @@ class UnrealToolWindow(QWidget):
         self.dropDown.addItem("Screen Space")
         self.dropDown.addItem("Surface Snapping")
  
-    def updateButtonColour(self, selectedColour):
-        self.colourPickerButton.setStyleSheet("background-color : red")
-        unreal.log(selectedColour)
+    # def updateButtonColour(self, selectedColour):
+    #     self.colourPickerButton.setStyleSheet("background-color : red")
+    #     unreal.log(selectedColour)
        
  
     def sliderChanged(self,value):
         unreal.log("Slider was moved to: " + str(value))
         self.sliderLabel.setText(str(value))
+        global sliderValue
+        sliderValue = value / 10
    
     def colourPickerButtonClicked(self):
         unreal.log("BUTTON CLICKED")
@@ -249,33 +285,54 @@ class UnrealToolWindow(QWidget):
         self.calibrateWindow = CalibrateWindow()
         self.calibrateWindow.show()
 
+# class ColourWindow(QWidget):
+#     def __init__(self, parent = UnrealToolWindow):
+#         super().__init__()
+#         colourLayout = QGridLayout()
+ 
+#         gridX = 0
+#         gridY = 0
+ 
+#         self.setLayout(colourLayout)
+#         self.colour_window = QMainWindow()
+#         #self.colour_window.setParent(self)
+#         self.colour_window.setFixedSize(QSize(100, 100))
+#         #ColourWindow.window = ColourWindow()
+#         #ColourWindow.window.setObjectName("colourWindow")
+#         #ColourWindow.window.setWindowTitle("Colour Picker")
+#         self.setLayout(colourLayout)
+#         for x in (coloursArray):
+#             self.colourButton = QPushButton()
+#             self.colourButton.setStyleSheet(f"background-color : {x}")
+#             self.colourButton.setMaximumWidth(25)
+#             colourLayout.addWidget(self.colourButton, gridX, gridY)
+#             gridY = gridY + 1
+#             if gridY > 4:
+#                 gridX = gridX + 1
+#                 gridY = 0
+#             self.colourButton.clicked.connect(self.ColourButtonClicked)
+       
 class ColourWindow(QWidget):
     def __init__(self, parent = UnrealToolWindow):
         super().__init__()
-        colourLayout = QGridLayout()
- 
-        gridX = 0
-        gridY = 0
- 
+        colourLayout = QVBoxLayout()
+
         self.setLayout(colourLayout)
-        self.colour_window = QMainWindow()
-        #self.colour_window.setParent(self)
-        self.colour_window.setFixedSize(QSize(100, 100))
-        #ColourWindow.window = ColourWindow()
-        #ColourWindow.window.setObjectName("colourWindow")
-        #ColourWindow.window.setWindowTitle("Colour Picker")
-        self.setLayout(colourLayout)
-        for x in (coloursArray):
-            self.colourButton = QPushButton()
-            self.colourButton.setStyleSheet(f"background-color : {x}")
-            self.colourButton.setMaximumWidth(25)
-            colourLayout.addWidget(self.colourButton, gridX, gridY)
-            gridY = gridY + 1
-            if gridY > 4:
-                gridX = gridX + 1
-                gridY = 0
-            self.colourButton.clicked.connect(self.ColourButtonClicked)
-       
+        self.colourWidget = QColorDialog()
+        colourLayout.addWidget(self.colourWidget)
+        self.colourWidget.colorSelected.connect(self.ColourSelected)
+
+    def ColourSelected(self):
+        selectedColour = self.sender().currentColor()
+        colour_name = selectedColour.name()
+        global currentColour
+        currentColour = colour_name
+        print(currentColour)
+        mainWindow = UnrealToolWindow()
+        mainWindow.colourPickerButton.setStyleSheet(f"background-color: {colour_name}, color: {colour_name}")
+        print (mainWindow.colourPickerButton.styleSheet())
+
+
     def ColourButtonClicked(self):
         colour = self.sender().styleSheet()
         global buttonColour
@@ -314,6 +371,9 @@ class TransparentWindow(QWidget):
             UES = unreal.UnrealEditorSubsystem()
             camLocation = unreal.UnrealEditorSubsystem.get_level_viewport_camera_info(UES)
             # print (camLocation)
+
+            self.spawnMousePos = mousePos
+
             global cameraValues
             cameraValues = []
         
@@ -322,13 +382,16 @@ class TransparentWindow(QWidget):
                 cameraValues.append(x)
         
             print(cameraValues[0])
+
+            self.meshArray = []
+
             global vForward
             vForward = unreal.MathLibrary.get_forward_vector(cameraValues[1])
             vUp = unreal.MathLibrary.get_up_vector(cameraValues[1])
             vRight = unreal.MathLibrary.get_right_vector(cameraValues[1])
             global spawnLocation
             spawnLocation = cameraValues[0] + (vForward * 750)
-            correctedLocation = (spawnLocation.x + (relativeMouseCoords.x * 0.5), spawnLocation.y + (relativeMouseCoords.y * 0.5), spawnLocation.z)
+            correctedLocation = ((relativeMouseCoords.x * 0.5),(relativeMouseCoords.y * 0.5), spawnLocation.z)
             # correctedLocation = (cameraValues[0].x + (vForward.x * 1000), cameraValues[0].y + (vUp.y * relativeMouseCoords.y), cameraValues[0].z + (vRight.z * relativeMouseCoords.x))
             print(f"SPAWN LOCATION: {spawnLocation}")
             # mouseInfo = unreal.PlayerController.deproject_screen_position_to_world(player, mousePos.x, mousePos.y)
@@ -366,13 +429,15 @@ class TransparentWindow(QWidget):
             unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(componentClass, '/All/Game', 'SplineMesh')
 
             coordSpace = unreal.SplineCoordinateSpace
-            Drawing.get_component_by_class(componentClass).set_static_mesh(staticMesh)
+            # Drawing.get_component_by_class(componentClass).set_static_mesh(staticMesh)
             Drawing.get_component_by_class(unreal.SplineComponent).clear_spline_points(update_spline = True)
             Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point((0, 0, 0), coordSpace.LOCAL, update_spline = True)
             global splinePoint
             global splineIndex
             splineIndex = 0
             splinePoint = Drawing.get_component_by_class(unreal.SplineComponent).get_spline_point_at(splineIndex, coordSpace.LOCAL)
+
+            self.meshArray.append(Drawing)
 
     def get_sub_handle_object(sub_handle):
         obj = BFL.get_object(BFL.get_data(sub_handle))
@@ -396,15 +461,15 @@ class TransparentWindow(QWidget):
     
     def mouseReleaseEvent(self, event):
         isDrawing = False
-        # if event.button() == QtCore.Qt.LeftButton:
-        #     AGU = unreal.ActorGroupingUtils
-        #     unreal.ActorGroupingUtils.group_actors(AGU, meshArray)
+        if event.button() == QtCore.Qt.LeftButton:
+            AGU = unreal.ActorGroupingUtils()
+            AGU.group_actors(self.meshArray)
         
     def mouseMoveEvent(self, event):
         global world
         global mousePos
         currentMousePos = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
-        relativeMouseCoords = currentMousePos - screenMidpoint
+        relativeMouseCoords = currentMousePos - self.spawnMousePos
         # correctedLocation = (spawnLocation.x, spawnLocation.y + relativeMouseCoords.x, spawnLocation.z - relativeMouseCoords.y)
         correctedLocation = (0, relativeMouseCoords.x, -relativeMouseCoords.y)
         posDiff = currentMousePos - mousePos
@@ -457,7 +522,7 @@ class TransparentWindow(QWidget):
             # root_data_handle = SDS.k2_gather_subobject_data_for_blueprint(blueprint)[0]
             global splineIndex
             coordSpace = unreal.SplineCoordinateSpace
-            staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
+            staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cylinder.Cylinder')
             splineComp = Drawing.get_component_by_class(unreal.SplineComponent)
             Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point(correctedLocation, unreal.SplineCoordinateSpace.LOCAL, update_spline = True)
             points = []
@@ -469,10 +534,11 @@ class TransparentWindow(QWidget):
                 MeshactorClass = unreal.SplineMeshActor
                 MeshActor = EAS.spawn_actor_from_class(MeshactorClass, (0, 0, 0))
                 MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_static_mesh(staticMesh)
+                MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_end_scale(end_scale = [sliderValue, sliderValue], update_mesh = True)
+                MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_start_scale(start_scale = [sliderValue, sliderValue], update_mesh = True)
                 MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_start_and_end(oldPointData[0], oldPointData[1], newPointData[0], newPointData[1], update_mesh=True)
-                MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_forward_axis(unreal.SplineMeshAxis.X)
-                # global meshArray
-                # meshArray.append[MeshActor]
+                MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_forward_axis(unreal.SplineMeshAxis.Z)
+                self.meshArray.append(MeshActor)
                 # CurrentMesh = unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(unreal.SplineMeshComponent, '/All/Game', f'{splineIndex}')
                 # print(unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(unreal.SplineMeshComponent, '/All/Game', f'{splineIndex}'))
                 # CurrentMesh.set_start_and_end(oldPointData[0], oldPointData[1], newPointData[0], newPointData[1], update_mesh=True)
@@ -544,38 +610,37 @@ class CalibrateWindow(QWidget):
             self.destroy()
 launchWindow()
  
-class SplineActor():
-    EAS = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
-    # viewport = unreal.Viewport()
-    # camLocation = unreal.Viewport.get_view_rotation(viewport)
-    # camLocation = unreal.EditorLevelLibrary.get_level_viewport_camera_info()
-    UES = unreal.UnrealEditorSubsystem()
-    camLocation = unreal.UnrealEditorSubsystem.get_level_viewport_camera_info(UES)
-    # print (camLocation)
-    cameraValues = []
+# class SplineActor():
+#     EAS = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+#     # viewport = unreal.Viewport()
+#     # camLocation = unreal.Viewport.get_view_rotation(viewport)
+#     # camLocation = unreal.EditorLevelLibrary.get_level_viewport_camera_info()
+#     UES = unreal.UnrealEditorSubsystem()
+#     camLocation = unreal.UnrealEditorSubsystem.get_level_viewport_camera_info(UES)
+#     # print (camLocation)
+#     cameraValues = []
    
-    for x in camLocation:
-        # print(type(x))
-        cameraValues.append(x)
+#     for x in camLocation:
+#         # print(type(x))
+#         cameraValues.append(x)
  
-    print(cameraValues[0])
-    vForward = unreal.MathLibrary.get_forward_vector(cameraValues[1])
-    spawnLocation = cameraValues[0] + (vForward * 1000)
-    print(f"SPAWN LOCATION: {spawnLocation}")
-    # unreal.log(camLocation)
+#     print(cameraValues[0])
+#     vForward = unreal.MathLibrary.get_forward_vector(cameraValues[1])
+#     spawnLocation = cameraValues[0] + (vForward * 1000)
+#     print(f"SPAWN LOCATION: {spawnLocation}")
+#     # unreal.log(camLocation)
  
-    mouse = unreal.MouseInputDeviceState()
-    RMB = mouse.right.__getattribute__("down")
-    print(RMB)
+#     mouse = unreal.MouseInputDeviceState()
+#     RMB = mouse.right.__getattribute__("down")
+#     print(RMB)
  
-    actorClass = unreal.StaticMeshActor
-    componentClass = unreal.StaticMeshComponent
-    location = unreal.Vector(0, 0, 200)
-    staticMeshActor = EAS.spawn_actor_from_class(actorClass, spawnLocation)
-    staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
+#     actorClass = unreal.StaticMeshActor
+#     componentClass = unreal.StaticMeshComponent
+#     location = unreal.Vector(0, 0, 200)
+#     staticMeshActor = EAS.spawn_actor_from_class(actorClass, spawnLocation)
+#     staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
  
-    staticMeshActor.get_component_by_class(componentClass).set_static_mesh(staticMesh)
-    # SystemLibrary.line_trace_single(start=camLocation, end=)
+#     staticMeshActor.get_component_by_class(componentClass).set_static_mesh(staticMesh)
+#     # SystemLibrary.line_trace_single(start=camLocation, end=)
 
-    DelBase = unreal.KeyEvent
-    print (DelBase)
+#     DelBase = unreal.KeyEvent
