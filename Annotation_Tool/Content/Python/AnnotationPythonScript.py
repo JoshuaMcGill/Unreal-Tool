@@ -50,6 +50,11 @@ import time
 # [DONE] Fix alignment issue when drawing further away from the calibrated midpoint
 # [DONE] Group mesh components after finishing stroke
 
+#TO DO 24/10:
+# [DONE] fix sync issues on uni computers AND remove need for calibrate button
+# add materials
+# [DONE] add ability to clear all drawings
+
 
 #make the tool (good luck)
 coloursArray = (
@@ -78,7 +83,7 @@ world = unreal.UnrealEditorSubsystem().get_editor_world()
 mousePos = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
 oldMousePos = mousePos
 
-screenMidpoint = mousePos
+screenMidpoint = (2560/2, 1440/2)
 
 sliderValue = 0.2
 
@@ -231,21 +236,25 @@ class UnrealToolWindow(QWidget):
         self.calibrateButton = QPushButton("Calibrate")
         self.calibrateButton.setMaximumWidth(200)
         self.calibrateButton.clicked.connect(self.calibrateButtonClicked)
+
+        self.clearButton = QPushButton("Clear All")
+        self.clearButton.setMaximumWidth(200)
+        self.clearButton.clicked.connect(self.clearButtonClicked)
  
         ##################################
  
         #layout = QBoxLayout(QBoxLayout.Direction.TopToBottom)
         layout = QGridLayout()
         layout.setColumnMinimumWidth(1, 15)
-        layout.addWidget(self.modeLabel, 0, 0)
-        layout.addWidget(self.dropDown, 0, 2)
+        # layout.addWidget(self.modeLabel, 0, 0)
+        # layout.addWidget(self.dropDown, 0, 2)
         layout.addWidget(self.sliderName, 1, 0)
         layout.addWidget(self.sliderLabel, 1, 1)
         layout.addWidget(self.slider, 1, 2)
         layout.addWidget(self.colourPickerLabel, 2, 0)
         layout.addWidget(self.colourPickerButton, 2, 2)
-        layout.addWidget(self.calibrateButton, 3, 2)
-        layout.addWidget(self.drawButton, 4, 2)
+        layout.addWidget(self.drawButton, 3, 2)
+        layout.addWidget(self.clearButton, 4, 2)
  
         container = QWidget()
         container.setLayout(layout)
@@ -284,6 +293,17 @@ class UnrealToolWindow(QWidget):
         unreal.log("Started Calibrating")
         self.calibrateWindow = CalibrateWindow()
         self.calibrateWindow.show()
+
+    def clearButtonClicked(self):
+        actors = unreal.GameplayStatics.get_all_actors_of_class(world, unreal.SplineMeshActor)
+        for actor in actors:
+            actor.destroy_actor()
+        actorClass = unreal.EditorAssetLibrary.load_blueprint_class('/Game/SplineBlueprint')
+        actors = unreal.GameplayStatics.get_all_actors_of_class(world, actorClass)
+        for actor in actors:
+            actor.destroy_actor()
+
+
 
 # class ColourWindow(QWidget):
 #     def __init__(self, parent = UnrealToolWindow):
@@ -347,7 +367,7 @@ class TransparentWindow(QWidget):
         self.transparent_window = QMainWindow()
         # self.transparent_window.setFixedSize(QSize(3000, 3000))
         # self.transparent_window.setMaximumSize(QSize(100, 100))
-        self.setMinimumSize(QSize(2000, 2000))
+        self.setMinimumSize(QSize(3000, 3000))
         palette = QtGui.QPalette()
         palette.setColorGroup
         # palette.setColor(QtGui.QPalette.color, QColor("#01000000"))
@@ -390,7 +410,7 @@ class TransparentWindow(QWidget):
             vUp = unreal.MathLibrary.get_up_vector(cameraValues[1])
             vRight = unreal.MathLibrary.get_right_vector(cameraValues[1])
             global spawnLocation
-            spawnLocation = cameraValues[0] + (vForward * 750)
+            spawnLocation = cameraValues[0] + (vForward *  1250)
             correctedLocation = ((relativeMouseCoords.x * 0.5),(relativeMouseCoords.y * 0.5), spawnLocation.z)
             # correctedLocation = (cameraValues[0].x + (vForward.x * 1000), cameraValues[0].y + (vUp.y * relativeMouseCoords.y), cameraValues[0].z + (vRight.z * relativeMouseCoords.x))
             print(f"SPAWN LOCATION: {spawnLocation}")
