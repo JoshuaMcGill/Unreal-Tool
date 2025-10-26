@@ -84,7 +84,10 @@ world = unreal.UnrealEditorSubsystem().get_editor_world()
 mousePos = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
 oldMousePos = mousePos
 
-screenMidpoint = mousePos
+screenRes = pyautogui.size()
+print (screenRes)
+# screenMidpoint = (2560/2, 1440/2)
+screenMidpoint = (screenRes[0]/2, screenRes[1]/2)
 
 sliderValue = 0.2
 
@@ -411,7 +414,7 @@ class TransparentWindow(QWidget):
             vUp = unreal.MathLibrary.get_up_vector(cameraValues[1])
             vRight = unreal.MathLibrary.get_right_vector(cameraValues[1])
             global spawnLocation
-            spawnLocation = cameraValues[0] + (vForward * 750)
+            spawnLocation = cameraValues[0] + (vForward *  (screenRes[1]*0.9))
             correctedLocation = ((relativeMouseCoords.x * 0.5),(relativeMouseCoords.y * 0.5), spawnLocation.z)
             # correctedLocation = (cameraValues[0].x + (vForward.x * 1000), cameraValues[0].y + (vUp.y * relativeMouseCoords.y), cameraValues[0].z + (vRight.z * relativeMouseCoords.x))
             print(f"SPAWN LOCATION: {spawnLocation}")
