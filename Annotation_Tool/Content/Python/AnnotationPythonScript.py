@@ -73,7 +73,8 @@ coloursArray = (
 )
  
 selectedColour = "background-color : #ff0000"
-currentColour = "#ff0000"
+# currentColour = "#15ff00ff"
+currentColour = (0, 0, 255, 0)
 
 toolRunning = True
 EAS = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
@@ -94,11 +95,13 @@ sliderValue = 0.2
 BFL = unreal.SubobjectDataBlueprintFunctionLibrary
 SDS = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
 
+MIIndex = 0
+
 def printScreenMidpoint():
     print(screenMidpoint)
 
 def CreateSplineBlueprint():
-    if unreal.EditorAssetLibrary.does_directory_exist("/Game/SplineBlueprint"):
+    if not unreal.EditorAssetLibrary.does_asset_exist("/Game/SplineBlueprint.SplineBlueprint"):
         print("FILE DOES NOT EXIST!!!")
         package_path = "/Game"
         factory = unreal.BlueprintFactory()
@@ -183,21 +186,48 @@ def CreateMaterial():
     assetTools = unreal.AssetToolsHelpers.get_asset_tools()
     materialEditingLibrary = unreal.MaterialEditingLibrary
     editorAssetLibrary = unreal.EditorAssetLibrary
-    if editorAssetLibrary.does_directory_exist("/Game/M_Spline"):
+    if not editorAssetLibrary.does_asset_exist("/Game/M_Spline.M_Spline"):
         assetTools.create_asset("M_Spline", "/Game", unreal.Material, unreal.MaterialFactoryNew())
-        baseMaterial = unreal.EditorAssetLibrary.find_asset_data("/Game/M_Spline")
-        print(baseMaterial)
+        mat = unreal.load_asset("/Game/M_Spline.M_Spline")
+        parameter = unreal.MaterialEditingLibrary.create_material_expression(mat, unreal.MaterialExpressionVectorParameter, -300, 0)
+        unreal.MaterialEditingLibrary.connect_material_property(from_expression=parameter, from_output_name="", property_=unreal.MaterialProperty.MP_BASE_COLOR)
+        MPA = unreal.MaterialParameterAssociation.GLOBAL_PARAMETER
+        # mInfo = unreal.MaterialInterface.get_parameter_info(unreal.MaterialInterface, MPA, "Param", unreal.MaterialFunctionInterface)
+        unreal.MaterialEditingLibrary.recompile_material(mat)
+        mInfo = unreal.MaterialEditingLibrary.get_vector_parameter_source(mat, "Param")
+        print (mInfo)
+        # parameter.set_editor_property("RGBA", (1, 1, 1, 1))
+
     else:
         pass
+    mat = unreal.load_asset("/Game/M_Spline.M_Spline")
+    names = unreal.MaterialEditingLibrary.get_vector_parameter_names(mat)
+    print (names)
 
 CreateMaterial()
+
+def CreateMaterialInstance():
+
+    global meshMatInstance
+    global MIIndex
+    meshMat = unreal.load_asset("/Game/M_Spline.M_Spline")
+    assetTools = unreal.AssetToolsHelpers.get_asset_tools()
+    MaterialEditingLibrary = unreal.MaterialEditingLibrary
+    meshMatInstance = assetTools.create_asset(f"MaterialInstance_{MIIndex}", "/Game", unreal.MaterialInstanceConstant, unreal.MaterialInstanceConstantFactoryNew())
+    MaterialEditingLibrary.set_material_instance_parent( meshMatInstance, meshMat)  # set parent material
+    unreal.MaterialEditingLibrary.set_material_instance_vector_parameter_value(meshMatInstance, 'Param', unreal.LinearColor(r=currentColour[0]/255, g=currentColour[1]/255, b=currentColour[2]/255, a=currentColour[3]))
+    unreal.MaterialEditingLibrary.update_material_instance(meshMatInstance)
+    unreal.EditorAssetLibrary.save_loaded_asset(meshMatInstance)
+    MIIndex = MIIndex + 1
+    
+CreateMaterialInstance()
 
 class UnrealToolWindow(QWidget):
     def __init__ (self, parent = None):
        
         # Run the Init of Qwidget <--- Parent
         super(UnrealToolWindow, self).__init__(parent)
- 
+        
         # Setting up the properties of my UnrealToolWindow
         self.main_window = QMainWindow()
         self.main_window.setParent(self)
@@ -299,6 +329,8 @@ class UnrealToolWindow(QWidget):
         self.calibrateWindow.show()
 
     def clearButtonClicked(self):
+        editorAssetLibrary = unreal.EditorAssetLibrary
+        print(MIIndex)
         actors = unreal.GameplayStatics.get_all_actors_of_class(world, unreal.SplineMeshActor)
         for actor in actors:
             actor.destroy_actor()
@@ -306,6 +338,11 @@ class UnrealToolWindow(QWidget):
         actors = unreal.GameplayStatics.get_all_actors_of_class(world, actorClass)
         for actor in actors:
             actor.destroy_actor()
+        for x in range(MIIndex):
+            if editorAssetLibrary.does_asset_exist(f"/Game/MaterialInstance_{x-1}.MaterialInstance_{x-1}"):
+                print("MATERIAL INSTANCE EXISTS!!")
+                material = unreal.EditorAssetLibrary.load_asset(f"/Game/MaterialInstance_{x-1}.MaterialInstance_{x-1}")
+                unreal.delete_asset(material)
 
 
 
@@ -350,7 +387,7 @@ class ColourWindow(QWidget):
         selectedColour = self.sender().currentColor()
         colour_name = selectedColour.name()
         global currentColour
-        currentColour = colour_name
+        currentColour = selectedColour
         print(currentColour)
         mainWindow = UnrealToolWindow()
         mainWindow.colourPickerButton.setStyleSheet(f"background-color: {colour_name}, color: {colour_name}")
@@ -458,9 +495,14 @@ class TransparentWindow(QWidget):
             Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point((0, 0, 0), coordSpace.LOCAL, update_spline = True)
             global splinePoint
             global splineIndex
+            global MIIndex
             splineIndex = 0
             splinePoint = Drawing.get_component_by_class(unreal.SplineComponent).get_spline_point_at(splineIndex, coordSpace.LOCAL)
             self.meshArray.append(Drawing)
+            Drawing.get_component_by_class(unreal.SplineComponent).set_editor_property("visible", True)
+            self.meshMat = unreal.load_asset("/Game/M_Spline.M_Spline")
+            # self.meshMatInstance = unreal.MaterialInstanceConstant(self.meshMat)
+
 
     def get_sub_handle_object(sub_handle):
         obj = BFL.get_object(BFL.get_data(sub_handle))
@@ -546,6 +588,7 @@ class TransparentWindow(QWidget):
             global splineIndex
             coordSpace = unreal.SplineCoordinateSpace
             staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cylinder.Cylinder')
+            Material = unreal.EditorAssetLibrary.load_asset(f'/Game/MaterialInstance_{MIIndex-1}.MaterialInstance_{MIIndex-1}')
             splineComp = Drawing.get_component_by_class(unreal.SplineComponent)
             Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point(correctedLocation, unreal.SplineCoordinateSpace.LOCAL, update_spline = True)
             points = []
@@ -561,6 +604,9 @@ class TransparentWindow(QWidget):
                 MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_start_scale(start_scale = [sliderValue, sliderValue], update_mesh = True)
                 MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_start_and_end(oldPointData[0], oldPointData[1], newPointData[0], newPointData[1], update_mesh=True)
                 MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_forward_axis(unreal.SplineMeshAxis.Z)
+                MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_editor_property("cast_shadow", False)
+                MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_material(0, Material)
+
                 self.meshArray.append(MeshActor)
                 # CurrentMesh = unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(unreal.SplineMeshComponent, '/All/Game', f'{splineIndex}')
                 # print(unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(unreal.SplineMeshComponent, '/All/Game', f'{splineIndex}'))
