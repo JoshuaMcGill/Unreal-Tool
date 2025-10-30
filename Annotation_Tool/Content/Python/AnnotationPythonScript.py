@@ -1,252 +1,137 @@
 import unreal
-# from pynput.keyboard import Key, Listener
-# import keyboard
-from collections import deque
-from collections.abc import Iterable
 import sys
 from PySide6 import QtCore, QtGui
-from unreal import SystemLibrary
-from functools import partial
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QMainWindow, QSlider, QVBoxLayout, QLabel, QCheckBox, QComboBox, QGridLayout, QBoxLayout, QGridLayout, QDialog, QColorDialog
-import time
 import pyautogui
 
-#TO DO:
-#make colour selection menu (returning to this later)
-#make a "start drawing" button on the UI that opens a transparent window that covers the whole screen. this way it can detect key inputs AND stop me moving about the camera using the mouse. Esc to close it
- 
-#gonna have to make the 'convert mouse position to world space' function myself:
-#get the world location and rotation of the camera,
-#find the forward vector of the camera,
-#add to that vector a multiplied version of the mouse's 2d coordinates (fiddle with it) and add some relative z offset
- 
-#FIGURING OUT LOCATION DIFF
-#find midpoint of viewport
-#find position of mouse RELATIVE to midpoint (mouse pos - midpoint)
- 
-#FUNCTIONALITY BREAKDOWN
-#   IN MOUSE MOVE EVENT:
-#       get current mouse location as a variable
-#       check if current mouse location is a certain distance away from previous mouse location
-#       if true set current mouse location as old mouse location and create a spline point at the current mouse location
- 
-# ADD CALIBRATION!!
- 
-#ORDER OF OPERATIONS FOR TODAY:
-# [DONE] make drawing and calibration window cover whole screen when opened
-# [DONE] add calibration functionality (literally just changes the value of the public screenMidpoint variable and then closes the window)
-# [DONE] make Esc or Enter close the drawing window
-# [DONE] fix the issue with creating the spline blueprint attempting to overwrite the other one
-#Implement spline point creation functionality
- 
- 
-# TO DO 23/10:
-# [DONE] change mesh to be a cylinder
-# [DONE] Sort out mesh scaling and assign it to the slider
-# Switch out high-poly cylinder for more low poly one. Either by just modelling and importing one from blender or by figuring out how to use the unreal modelling tool in python
-# Give the spline a material
-# Create a material parameter and assign it to the currently selected colour
-# [DONE] Fix alignment issue when drawing further away from the calibrated midpoint
-# [DONE] Group mesh components after finishing stroke
- 
-#TO DO 24/10:
-# [DONE] fix sync issues on uni computers AND remove need for calibrate button
-# add materials
-# [DONE] add ability to clear all drawings
- 
-#FINAL TO DO 29/10
-# [DONE] fix main UI not drawing on top of transparent window OR come up with way to keep focus on transparent window while drawing //SOLUTION - bind "stop drawing" to middle mouse instead of Esc.
-# makes slightly less sense but it's the best I've got without having the player click on the main UI to stop drawing :(
 
-# [DONE] fix colour not changing on colour button (should not have taken me this long)
-# group all spline mesh actors into a folder in the outliner
+#Global Variables
 
-
-#make the tool (good luck)
-coloursArray = (
-        "black",
-        "grey",
-        "white",
-        "red",
-        "orange",
-        "yellow",
-        "green",
-        "blue",
-        "cyan",
-        "magenta"
-)
 selectedColour = "background-color : #ff0000"
-# currentColour = "#15ff00ff"
-currentColour = (0, 0, 1, 0)
-currentR, currentG, currentB, currentA = (0.0, 0.0, 1.0, 0.0)
-# colourHex = "#0000ff"
-toolRunning = True
+currentR, currentG, currentB, currentA = (1.0, 1.0, 1.0, 0.0)
 EAS = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
- 
-isDrawing = False
- 
 world = unreal.UnrealEditorSubsystem().get_editor_world()
 mousePos = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
-oldMousePos = mousePos
- 
 screenRes = pyautogui.size()
-print (screenRes)
-# screenMidpoint = (2560/2, 1440/2)
 screenMidpoint = (screenRes[0]/2, screenRes[1]/2)
- 
 sliderValue = 0.2
- 
 BFL = unreal.SubobjectDataBlueprintFunctionLibrary
 SDS = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
- 
 MIIndex = 0
- 
-def printScreenMidpoint():
-    print(screenMidpoint)
- 
-def CreatePath():
-    if not unreal.EditorAssetLibrary.does_asset_exist("/Game/AnnotationTool"):
-        print("path created")
-        unreal.EditorAssetLibrary.make_directory("AnnotationTool")
-CreatePath()
-def CreateSplineBlueprint():
-    if not unreal.EditorAssetLibrary.does_asset_exist("/Game//AnnotationTool/SplineBlueprint.SplineBlueprint"):
-        print("FILE DOES NOT EXIST!!!")
-        package_path = "/Game/AnnotationTool"
-        factory = unreal.BlueprintFactory()
-        factory.set_editor_property("parent_class", unreal.Actor)
-        #make the blueprint
-        asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
-        SplineClass = unreal.Class
-        global blueprint
-        blueprint = asset_tools.create_asset('SplineBlueprint', package_path, unreal.Blueprint, factory)
-        #get the root data handle
-        subsystem = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
-        blueprint_handle = subsystem.k2_gather_subobject_data_for_blueprint(blueprint)[0]
-        #get blueprint utility
-        blueprint_library = unreal.SubobjectDataBlueprintFunctionLibrary()
-        #choose component type
-        # component_type = 'SplineMesh'
-        # asset_editor_property_name = ''
-        # asset_path = ''
-        # #choose component type
-        # if 'Blueprint' == component_type:
-        #     new_class = unreal.ChildActorComponent
-        #     asset_editor_property_name = 'child_actor_class'
-        #     asset_path = '/Game/Blueprints/BP_Character'
-        # elif 'StaticMesh' == component_type:
-        #     new_class = unreal.StaticMeshComponent
-        #     asset_editor_property_name = 'static_mesh'              
-        #     asset_path = '/Game/Environments/SM_House'
-        # elif 'SkeletalMesh' == component_type:
-        #     new_class = unreal.SkeletalMeshComponent
-        #     asset_editor_property_name = 'skeletal_mesh'
-        #     asset_path = '/Game/Characters/SK_Skeleton'
-        # elif 'SplineMesh' == component_type:
-        #     new_class = unreal.SplineMeshComponent
-        #     asset_editor_property_name = 'spline_mesh'
-        #     asset_path = '/Engine/BasicShapes/Cube.Cube'
- 
-        # #add sub component
-        # params = unreal.AddNewSubobjectParams(parent_handle=blueprint_handle, new_class=new_class, blueprint_context=blueprint)
-        # sub_handle, fail_reason = subsystem.add_new_subobject(params)
-        # if not fail_reason.is_empty():
-        #     raise Exception("ERROR from sub_object_subsystem.add_new_subobject: {fail_reason}" )
- 
-        # # attach
-        # subsystem.attach_subobject( blueprint_handle, sub_handle )
- 
-        new_class = unreal.SplineComponent
-        asset_editor_property_name = 'spline'
- 
-        params = unreal.AddNewSubobjectParams(parent_handle=blueprint_handle, new_class=new_class, blueprint_context=blueprint)
-        sub_handle, fail_reason = subsystem.add_new_subobject(params)
-        if not fail_reason.is_empty():
-            raise Exception("ERROR from sub_object_subsystem.add_new_subobject: {fail_reason}" )
- 
-        # attach
-        subsystem.attach_subobject( blueprint_handle, sub_handle )
-        # get object and component
-        sub_data = blueprint_library.get_data(sub_handle)
-        sub_component = blueprint_library.get_object(sub_data)
- 
-        # # set static mesh asset
-        # asset = unreal.EditorAssetLibrary.load_asset(asset_path)
-        # if asset is not None:
-        #     sub_component.set_editor_property(asset_editor_property_name, asset)
- 
-        # set relative location
-        # location, is_valid = unreal.StringLibrary.conv_string_to_vector('(X=-208.000000,Y=-1877.000000,Z=662.000000)')
-        # sub_component.set_editor_property('RelativeLocation', location)
-    else:
-        pass
- 
-CreateSplineBlueprint()
-# def CreateMeshObject():
-#     MOC = unreal.ModelingObjectsCreationAPI
-#     cylinder = unreal.PrimitiveComponent.
-#     params = unreal.CreateMeshObjectParams()
-#     MOC.create_mesh_object()
-#     pass
- 
- 
-def CreateMaterial():
-    assetTools = unreal.AssetToolsHelpers.get_asset_tools()
-    materialEditingLibrary = unreal.MaterialEditingLibrary
-    editorAssetLibrary = unreal.EditorAssetLibrary
-    if not editorAssetLibrary.does_asset_exist("/Game/AnnotationTool/M_Spline.M_Spline"):
-        assetTools.create_asset("M_Spline", "/Game/AnnotationTool", unreal.Material, unreal.MaterialFactoryNew())
+
+class InitialiseTool():
+    def __init__(self):
+        self.name = "AnnotationTool"
+
+    def CreatePath(): # Creates a folder in the content browser in which all the materials etc. for this tool are stored
+        
+        # If the folder doesn't exist, make one.
+        if not unreal.EditorAssetLibrary.does_asset_exist("/Game/AnnotationTool"):
+            print("path created")
+            unreal.EditorAssetLibrary.make_directory("AnnotationTool")
+
+
+    def CreateSplineBlueprint(): # Creates the spline blueprint that's used for the drawing. Basically just an actor with a spline component.
+
+        if not unreal.EditorAssetLibrary.does_asset_exist("/Game//AnnotationTool/SplineBlueprint.SplineBlueprint"): # Checking if blueprint already exists
+            package_path = "/Game/AnnotationTool"
+            factory = unreal.BlueprintFactory()
+            factory.set_editor_property("parent_class", unreal.Actor)
+            #make the blueprint
+            asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
+            SplineClass = unreal.Class
+            global blueprint
+            blueprint = asset_tools.create_asset('SplineBlueprint', package_path, unreal.Blueprint, factory)
+            #get the root data handle
+            subsystem = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
+            blueprint_handle = subsystem.k2_gather_subobject_data_for_blueprint(blueprint)[0]
+
+            new_class = unreal.SplineComponent
+    
+            params = unreal.AddNewSubobjectParams(parent_handle=blueprint_handle, new_class=new_class, blueprint_context=blueprint)
+            sub_handle, fail_reason = subsystem.add_new_subobject(params)
+            if not fail_reason.is_empty():
+                raise Exception("ERROR from sub_object_subsystem.add_new_subobject: {fail_reason}" )
+    
+            # attach
+            subsystem.attach_subobject( blueprint_handle, sub_handle )
+            # get object and component
+    
+        else:
+            pass
+    
+    def CreateMaterial(): # Creates the base material, of which instances are made so the colour can be changed for each stroke.
+        assetTools = unreal.AssetToolsHelpers.get_asset_tools()
+        editorAssetLibrary = unreal.EditorAssetLibrary
+
+        # If the material doesn't exist, make it in the file path defined earlier.
+        if not editorAssetLibrary.does_asset_exist("/Game/AnnotationTool/M_Spline.M_Spline"):
+            assetTools.create_asset("M_Spline", "/Game/AnnotationTool", unreal.Material, unreal.MaterialFactoryNew())
+            mat = unreal.load_asset("/Game/AnnotationTool/M_Spline.M_Spline")
+            
+            # Create a vector parameter node and attach it to the material output
+            parameter = unreal.MaterialEditingLibrary.create_material_expression(mat, unreal.MaterialExpressionVectorParameter, -300, 0)
+            unreal.MaterialEditingLibrary.connect_material_property(from_expression=parameter, from_output_name="", property_=unreal.MaterialProperty.MP_BASE_COLOR)
+            unreal.MaterialEditingLibrary.recompile_material(mat)
+    
+        else:
+            pass
         mat = unreal.load_asset("/Game/AnnotationTool/M_Spline.M_Spline")
-        parameter = unreal.MaterialEditingLibrary.create_material_expression(mat, unreal.MaterialExpressionVectorParameter, -300, 0)
-        unreal.MaterialEditingLibrary.connect_material_property(from_expression=parameter, from_output_name="", property_=unreal.MaterialProperty.MP_BASE_COLOR)
-        MPA = unreal.MaterialParameterAssociation.GLOBAL_PARAMETER
-        # mInfo = unreal.MaterialInterface.get_parameter_info(unreal.MaterialInterface, MPA, "Param", unreal.MaterialFunctionInterface)
-        unreal.MaterialEditingLibrary.recompile_material(mat)
-        mInfo = unreal.MaterialEditingLibrary.get_vector_parameter_source(mat, "Param")
-        print (mInfo)
-        # parameter.set_editor_property("RGBA", (1, 1, 1, 1))
+    
+    def CreateMaterialInstance(): # Creates a material instance of the material I just defined.
+    
+        global meshMatInstance
+        global MIIndex
+        # Load the material
+        meshMat = unreal.load_asset("/Game/AnnotationTool/M_Spline.M_Spline")
+        assetTools = unreal.AssetToolsHelpers.get_asset_tools()
+        MaterialEditingLibrary = unreal.MaterialEditingLibrary
+        editorAssetLibrary = unreal.EditorAssetLibrary
+
+        # If a material instance of the current index does not exist, make it.
+        if not editorAssetLibrary.does_asset_exist(f"/Game/AnnotationTool/MaterialInstance_{MIIndex}.MaterialInstance_{MIIndex}"):
+            meshMatInstance = assetTools.create_asset(f"MaterialInstance_{MIIndex}", "/Game/AnnotationTool", unreal.MaterialInstanceConstant, unreal.MaterialInstanceConstantFactoryNew())
+            MaterialEditingLibrary.set_material_instance_parent( meshMatInstance, meshMat)  # set parent material
+
+            # Set the vector parameter value to the currently selected colour
+            unreal.MaterialEditingLibrary.set_material_instance_vector_parameter_value(meshMatInstance, 'Param', unreal.LinearColor(r=currentR, g=currentG, b=currentB, a=1.0))
+            unreal.MaterialEditingLibrary.update_material_instance(meshMatInstance)
+            unreal.EditorAssetLibrary.save_loaded_asset(meshMatInstance)
+            MIIndex = MIIndex + 1
+        else:
+            MIIndex = MIIndex + 1
+        global instance
+
+        # Set the current material instance
+        instance = editorAssetLibrary.load_asset(f"/Game/AnnotationTool/MaterialInstance_{MIIndex - 1}.MaterialInstance_{MIIndex - 1}")
+    
+    # Update the colour of the material instance
+    def UpdateInstanceColour():
+        unreal.MaterialEditingLibrary.set_material_instance_vector_parameter_value(instance, 'Param', unreal.LinearColor(r=currentR, g=currentG, b=currentB, a=1.0))
+        unreal.MaterialEditingLibrary.update_material_instance(instance)
+        unreal.EditorAssetLibrary.save_loaded_asset(instance)
+
+    #Launch the window, and if the window already exists destroy the previous one.
+    def launchWindow():
+        if QApplication.instance():
+            for win in (QApplication.allWindows()):
+                if 'toolWindow' in win.objectName():
+                    win.destroy()
+
+        #set the name and visibility of the created window
+        UnrealToolWindow.window = UnrealToolWindow()
+        UnrealToolWindow.window.setObjectName("toolWindow")
+        UnrealToolWindow.window.setWindowTitle("Annotation Tool")
+        UnrealToolWindow.window.show()
+        unreal.parent_external_window_to_slate(UnrealToolWindow.window.winId())
  
-    else:
-        pass
-    mat = unreal.load_asset("/Game/AnnotationTool/M_Spline.M_Spline")
-    names = unreal.MaterialEditingLibrary.get_vector_parameter_names(mat)
-    print (names)
- 
-CreateMaterial()
- 
-def CreateMaterialInstance():
- 
-    global meshMatInstance
-    global MIIndex
-    meshMat = unreal.load_asset("/Game/AnnotationTool/M_Spline.M_Spline")
-    assetTools = unreal.AssetToolsHelpers.get_asset_tools()
-    MaterialEditingLibrary = unreal.MaterialEditingLibrary
-    editorAssetLibrary = unreal.EditorAssetLibrary
-    if not editorAssetLibrary.does_asset_exist(f"/Game/AnnotationTool/MaterialInstance_{MIIndex}.MaterialInstance_{MIIndex}"):
-        meshMatInstance = assetTools.create_asset(f"MaterialInstance_{MIIndex}", "/Game/AnnotationTool", unreal.MaterialInstanceConstant, unreal.MaterialInstanceConstantFactoryNew())
-        MaterialEditingLibrary.set_material_instance_parent( meshMatInstance, meshMat)  # set parent material
-        unreal.MaterialEditingLibrary.set_material_instance_vector_parameter_value(meshMatInstance, 'Param', unreal.LinearColor(r=currentR, g=currentG, b=currentB, a=1.0))
-        unreal.MaterialEditingLibrary.update_material_instance(meshMatInstance)
-        unreal.EditorAssetLibrary.save_loaded_asset(meshMatInstance)
-        MIIndex = MIIndex + 1
-    else:
-        MIIndex = MIIndex + 1
-    global instance
-    instance = editorAssetLibrary.load_asset(f"/Game/AnnotationTool/MaterialInstance_{MIIndex - 1}.MaterialInstance_{MIIndex - 1}")
-CreateMaterialInstance()
- 
-def UpdateInstanceColour():
-    unreal.MaterialEditingLibrary.set_material_instance_vector_parameter_value(instance, 'Param', unreal.LinearColor(r=currentR, g=currentG, b=currentB, a=1.0))
-    unreal.MaterialEditingLibrary.update_material_instance(instance)
-    unreal.EditorAssetLibrary.save_loaded_asset(instance)
- 
-    mainWindow = UnrealToolWindow()
- 
-class UnrealToolWindow(QWidget):
+class UnrealToolWindow(QWidget): # Class containing all the info about the main tool UI
     def __init__ (self, parent = None):
         # Run the Init of Qwidget <--- Parent
         super(UnrealToolWindow, self).__init__(parent)
+
+        #Set the UI to be in dark mode, and change the font
         self.setStyleSheet("""
             background-color: #303030;
             color: #ffffff;
@@ -258,126 +143,91 @@ class UnrealToolWindow(QWidget):
         # Setting up the properties of my UnrealToolWindow
         self.main_window = QMainWindow()
         self.main_window.setParent(self)
-        self.main_window.setFixedSize(QSize(400,300))
-        # Create a Click Event that when the button is clicked it will call the function
-        # ButtonClicked()
-        currentColour = selectedColour
+        self.main_window.setFixedSize(QSize(400,300)) # Set window size
 
-        self.slider = QSlider(Qt.Horizontal)
+        # Creating all the widgets that populate the UI, and altering their properties
+        self.slider = QSlider(Qt.Horizontal) # Drawing size slider
         self.slider.setMinimum(1)
         self.slider.setMaximum(50)
         self.slider.setSliderPosition(2)
         self.slider.valueChanged.connect(self.sliderChanged)
-        self.sliderLabel = QLabel()
+
+        self.sliderLabel = QLabel() # Label and value for the slider
         self.sliderLabel.setText("2")
-        #self.sliderLabel.setAlignment(Qt.AlignJustify)
         self.sliderName = QLabel("Line Width:")
-        self.modeLabel = QLabel("Mode:")
-        self.dropDown = QComboBox()
-        self.colourPickerButton = QPushButton()
+
+
+        self.colourPickerButton = QPushButton() # Button that opens up colour selection window
         self.colourPickerButton.setMaximumWidth(30)
         self.colourPickerButton.setStyleSheet("background-color: #ffffff")
-        # self.colourPickerButton.setStyleSheet(f"""
-        #                                       background-color: {colourHex},
-        #                                       color: #fbb03b""")
-        self.colourPickerLabel = QLabel("Line Colour:")
-        self.colourPickerButton.clicked.connect(self.colourPickerButtonClicked)
+
+        self.colourPickerLabel = QLabel("Line Colour:") # Name for button
+
+        self.colourPickerButton.clicked.connect(self.colourPickerButtonClicked) # Connects this button to a function defined later
  
-        self.drawButton = QPushButton("Start Drawing")
+        self.drawButton = QPushButton("Start Drawing") # Button that activates drawing
         self.drawButton.setMaximumWidth(200)
         self.drawButton.clicked.connect(self.drawButtonClicked)
  
-        self.calibrateButton = QPushButton("Calibrate")
-        self.calibrateButton.setMaximumWidth(200)
-        self.calibrateButton.clicked.connect(self.calibrateButtonClicked)
- 
-        self.clearButton = QPushButton("Clear All")
+        self.clearButton = QPushButton("Clear All") # Button that clears all drawings in the level, and deletes all associated material instances
         self.clearButton.setMaximumWidth(200)
         self.clearButton.clicked.connect(self.clearButtonClicked)
 
-        self.stopDrawingButton = QPushButton("Stop Drawing")
-        self.stopDrawingButton.setMaximumWidth(200)
-        self.stopDrawingButton.clicked.connect(self.stopButtonClicked)
         ##################################
-        #layout = QBoxLayout(QBoxLayout.Direction.TopToBottom)
+
+        # Add all the widgets to the UI, including their position coordinates on the grid layout (x, y)
         layout = QGridLayout()
-        layout.setColumnMinimumWidth(1, 15)
-        # layout.addWidget(self.modeLabel, 0, 0)
-        # layout.addWidget(self.dropDown, 0, 2)
+        layout.setColumnMinimumWidth(1, 15) # Sets width of column 1
         layout.addWidget(self.sliderName, 1, 0)
         layout.addWidget(self.sliderLabel, 1, 1)
         layout.addWidget(self.slider, 1, 2)
         layout.addWidget(self.colourPickerLabel, 2, 0)
         layout.addWidget(self.colourPickerButton, 2, 2)
         layout.addWidget(self.drawButton, 3, 2)
-        layout.addWidget(self.stopDrawingButton, 4, 2)
-        layout.addWidget(self.clearButton, 5, 2)
+        layout.addWidget(self.clearButton, 4, 2)
         container = QWidget()
         container.setLayout(layout)
-        #self.main_window.setCentralWidget(container)
-        self.main_window.setMenuWidget(container)
-        self.dropDown.addItem("Screen Space")
-        self.dropDown.addItem("Surface Snapping")
-    # def updateButtonColour(self, selectedColour):
-    #     self.colourPickerButton.setStyleSheet("background-color : red")
-    #     unreal.log(selectedColour)
+        self.main_window.setMenuWidget(container) # Sets layout of window
 
-    def sliderChanged(self,value):
+    def sliderChanged(self,value): # Function for when the slider value is changed
         unreal.log("Slider was moved to: " + str(value))
         self.sliderLabel.setText(str(value))
         global sliderValue
         sliderValue = value / 10
 
-    def colourPickerButtonClicked(self):
-        unreal.log("BUTTON CLICKED")
+    def colourPickerButtonClicked(self): # Function for when a new colour is selected from the colour dialog window
 
-        # self.colourWindow = ColourWindow()
-        # self.colourWindow.show()
-
-        # selectedColour = ("background-color : green")
-        # fish = self.colourPickerButton.styleSheet()
-        # print (fish)
         color = QColorDialog.getColor("#ffffff", self, "Select a Color")
  
         if color.isValid():
             # Apply Chosen Colour
             css = f"background-color: {color.name()}; font-weight: bold; font-size: 14px;"
             self.colourPickerButton.setStyleSheet(css)
-        colour_name = color
         global colourHex
         colourHex = color.name()
-        print(colourHex)
-        global currentColour
         global currentR, currentG, currentB, currentA
-        currentR, currentG, currentB, currentA = (color.red() / 255, color.green() / 255, color.blue() / 255, color.alpha)
-        currentColour = color
-        print(f"COLOUR: {color.red() / 255, color.green() / 255, color.blue() / 255, color.alpha}")
-        # mainWindow.colourPickerButton.setStyleSheet(f"background-color: {colourHex}; color = {colourHex}; border: none")
-        # print (f"STYLE SHEET : {mainWindow.colourPickerButton.styleSheet()}")
-        UpdateInstanceColour()
+        currentR, currentG, currentB, currentA = (color.red() / 255, color.green() / 255, color.blue() / 255, color.alpha) # Values used in the material instance
+        InitialiseTool.UpdateInstanceColour() # Calls the Update material instance colour function
  
  
-    def drawButtonClicked(self):
+    def drawButtonClicked(self): # Creates a transparent window that covers the screen and receives user input
         unreal.log("Started Drawing")
         self.transparentWindow = TransparentWindow()
         self.transparentWindow.show()
         TransparentWindow.window = TransparentWindow()
         TransparentWindow.window.setObjectName("DrawWindow")
-        CreateMaterialInstance()
- 
-    def calibrateButtonClicked(self):
-        unreal.log("Started Calibrating")
-        self.calibrateWindow = CalibrateWindow()
-        self.calibrateWindow.show()
- 
-    def clearButtonClicked(self):
         editorAssetLibrary = unreal.EditorAssetLibrary
-        print(MIIndex)
-        actors = unreal.GameplayStatics.get_all_actors_of_class(world, unreal.SplineMeshActor)
+        # Creates a material instance if one does not exist
+        if not editorAssetLibrary.does_asset_exist(f"/Game/AnnotationTool/MaterialInstance_{MIIndex}.MaterialInstance_{MIIndex}"):
+            InitialiseTool.CreateMaterialInstance()
+ 
+    def clearButtonClicked(self): # Deletes all spline actors, spline mesh actors, and groups they were contained in
+        editorAssetLibrary = unreal.EditorAssetLibrary
+        actors = unreal.GameplayStatics.get_all_actors_of_class(world, unreal.SplineMeshActor) # Gets the spline mesh actors
         for actor in actors:
             actor.destroy_actor()
         actorClass = unreal.EditorAssetLibrary.load_blueprint_class('/Game/AnnotationTool/SplineBlueprint')
-        actors = unreal.GameplayStatics.get_all_actors_of_class(world, actorClass)
+        actors = unreal.GameplayStatics.get_all_actors_of_class(world, actorClass) # Gets the spline blueprint actors
         for actor in actors:
             actor.destroy_actor()
         for x in range(MIIndex):
@@ -385,40 +235,16 @@ class UnrealToolWindow(QWidget):
                 print("MATERIAL INSTANCE EXISTS!!")
                 material = (f"/Game/AnnotationTool/MaterialInstance_{x}.MaterialInstance_{x}")
                 unreal.EditorAssetLibrary.delete_asset(material)
-
-    def stopButtonClicked(self):
-        if QApplication.instance():
-            for win in (QApplication.allWindows()):
-                if 'DrawWindow' in win.objectName():
-                    win.destroy()
+        actors = unreal.GameplayStatics.get_all_actors_of_class(world, unreal.GroupActor)
+        for actor in actors:
+            label = actor.get_actor_label()
+            if label == "SplineGroup": # Checks if the name of the group is SplineGroup, if so deletes it
+                actor.destroy_actor()
 
     def ChangeButtonColour(self, colour):
         self.colourPickerButton.setStyleSheet(f"background-color: {colour}; border: none")
         print(f"NEW BUTTON COLOUR IS: {colour}")
-# class ColourWindow(QWidget):
-#     def __init__(self, parent = UnrealToolWindow):
-#         super().__init__()
-#         colourLayout = QGridLayout()
-#         gridX = 0
-#         gridY = 0
-#         self.setLayout(colourLayout)
-#         self.colour_window = QMainWindow()
-#         #self.colour_window.setParent(self)
-#         self.colour_window.setFixedSize(QSize(100, 100))
-#         #ColourWindow.window = ColourWindow()
-#         #ColourWindow.window.setObjectName("colourWindow")
-#         #ColourWindow.window.setWindowTitle("Colour Picker")
-#         self.setLayout(colourLayout)
-#         for x in (coloursArray):
-#             self.colourButton = QPushButton()
-#             self.colourButton.setStyleSheet(f"background-color : {x}")
-#             self.colourButton.setMaximumWidth(25)
-#             colourLayout.addWidget(self.colourButton, gridX, gridY)
-#             gridY = gridY + 1
-#             if gridY > 4:
-#                 gridX = gridX + 1
-#                 gridY = 0
-#             self.colourButton.clicked.connect(self.ColourButtonClicked)
+
 class ColourWindow(QWidget):
     def __init__(self, parent = UnrealToolWindow):
         super().__init__()
@@ -431,108 +257,51 @@ class ColourWindow(QWidget):
  
     def ColourSelected(self):
         selectedColour = self.sender().currentColor()
-        # colour_name = selectedColour.name()
-        colour_name = selectedColour
         global colourHex
         colourHex = selectedColour.name()
-        print(colourHex)
-        global currentColour
         global currentR, currentG, currentB, currentA
         currentR, currentG, currentB, currentA = (selectedColour.red() / 255, selectedColour.green() / 255, selectedColour.blue() / 255, selectedColour.alpha)
-        currentColour = selectedColour
-        print(colour_name)
-        # mainWindow.colourPickerButton.setStyleSheet(f"background-color: {colourHex}; color = {colourHex}; border: none")
-        # print (f"STYLE SHEET : {mainWindow.colourPickerButton.styleSheet()}")
-        UpdateInstanceColour()
+        InitialiseTool.UpdateInstanceColour()
         self.destroy()
- 
- 
-    def ColourButtonClicked(self):
-        colour = self.sender().styleSheet()
-        global buttonColour
-        buttonColour = colour
-        selectedColour = self.sender().styleSheet()
-        mainWindow = UnrealToolWindow()
-        mainWindow.updateButtonColour(selectedColour)
+
 class TransparentWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.transparent_window = QMainWindow()
-        # self.transparent_window.setFixedSize(QSize(3000, 3000))
-        # self.transparent_window.setMaximumSize(QSize(100, 100))
         self.setMinimumSize(QSize(3000, 3000))
         palette = QtGui.QPalette()
         palette.setColorGroup
-        # palette.setColor(QtGui.QPalette.color, QColor("#01000000"))
         palette.setColor(QtGui.QPalette.ColorRole.Window, "#000000")
         self.setPalette(palette)
         self.setWindowFlags(QtCore.Qt.FramelessWindowHint)
         self.setWindowOpacity(0.1)
-        # self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
 
  
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton:
-            print("Hello you fool")
-            isDrawing = True
-            # player = unreal.PlayerController()
             global mousePos
             mousePos = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
-            oldMousePos = mousePos
             relativeMouseCoords = mousePos - screenMidpoint
-            print (f"MOUSE POS: {mousePos}")
             UES = unreal.UnrealEditorSubsystem()
             camLocation = unreal.UnrealEditorSubsystem.get_level_viewport_camera_info(UES)
-            # print (camLocation)
  
             self.spawnMousePos = mousePos
  
             global cameraValues
             cameraValues = []
             for x in camLocation:
-                # print(type(x))
                 cameraValues.append(x)
-            print(cameraValues[0])
  
             self.meshArray = []
  
             global vForward
             vForward = unreal.MathLibrary.get_forward_vector(cameraValues[1])
-            vUp = unreal.MathLibrary.get_up_vector(cameraValues[1])
-            vRight = unreal.MathLibrary.get_right_vector(cameraValues[1])
             global spawnLocation
             spawnLocation = cameraValues[0] + (vForward *  (screenRes[1]*0.9))
-            correctedLocation = ((relativeMouseCoords.x * 0.5),(relativeMouseCoords.y * 0.5), spawnLocation.z)
-            # correctedLocation = (cameraValues[0].x + (vForward.x * 1000), cameraValues[0].y + (vUp.y * relativeMouseCoords.y), cameraValues[0].z + (vRight.z * relativeMouseCoords.x))
-            print(f"SPAWN LOCATION: {spawnLocation}")
-            # mouseInfo = unreal.PlayerController.deproject_screen_position_to_world(player, mousePos.x, mousePos.y)
-            # print (mouseInfo)
-            # hud = unreal.HUD()
-            # mouseInfo = unreal.HUD.deproject(hud, mousePos.x, mousePos.y)
-            # print (mouseInfo)
-            # world = unreal.Viewport.get_viewport_world(self)
-            forward = unreal.Vector.FORWARD
-            print(forward)
-            # actorClass = unreal.StaticMeshActor
-            # componentClass = unreal.StaticMeshComponent
-            # location = unreal.Vector(0, 0, 200)
-            # staticMeshActor = EAS.spawn_actor_from_class(actorClass, spawnLocation)
-            # staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
-            # staticMeshActor.set_actor_rotation(cameraValues[1], False)
-            # staticMeshActor.add_actor_local_offset((0, relativeMouseCoords.x, -relativeMouseCoords.y), False, False)
-            # staticMeshActor.get_component_by_class(componentClass).set_static_mesh(staticMesh)
- 
-            # actorClass = unreal.SplineMeshActor
-            # Drawing = EAS.spawn_actor_from_class(actorClass, spawnLocation)
-            # Drawing.set_actor_rotation(cameraValues[1], False)
-            # Drawing.add_actor_local_offset((0, relativeMouseCoords.x, -relativeMouseCoords.y), False, False)
-            # staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
-            # Drawing.get_component_by_class(componentClass).set_static_mesh(staticMesh)
  
             actorClass = unreal.EditorAssetLibrary.load_blueprint_class('/Game/AnnotationTool/SplineBlueprint')
             componentClass = unreal.SplineMeshComponent
-            staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
             global Drawing
             Drawing = EAS.spawn_actor_from_class(actorClass, spawnLocation)
             Drawing.set_actor_rotation(cameraValues[1], False)
@@ -540,7 +309,6 @@ class TransparentWindow(QWidget):
             unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(componentClass, '/All/Game/AnnotationTool', 'SplineMesh')
  
             coordSpace = unreal.SplineCoordinateSpace
-            # Drawing.get_component_by_class(componentClass).set_static_mesh(staticMesh)
             Drawing.get_component_by_class(unreal.SplineComponent).clear_spline_points(update_spline = True)
             Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point((0, 0, 0), coordSpace.LOCAL, update_spline = True)
             global splinePoint
@@ -551,7 +319,6 @@ class TransparentWindow(QWidget):
             self.meshArray.append(Drawing)
             Drawing.get_component_by_class(unreal.SplineComponent).set_editor_property("visible", True)
             self.meshMat = unreal.load_asset("/Game/AnnotationTool/M_Spline.M_Spline")
-            # self.meshMatInstance = unreal.MaterialInstanceConstant(self.meshMat)
 
         elif event.button() == QtCore.Qt.MiddleButton:
             self.destroy()
@@ -576,72 +343,24 @@ class TransparentWindow(QWidget):
         return sub_handle, obj
  
     def mouseReleaseEvent(self, event):
-        isDrawing = False
         if event.button() == QtCore.Qt.LeftButton:
             AGU = unreal.ActorGroupingUtils()
-            AGU.group_actors(self.meshArray)
-            CreateMaterialInstance()
+            group = AGU.group_actors(self.meshArray)
+            group.set_actor_label("SplineGroup")
+            InitialiseTool.CreateMaterialInstance()
             self.showNormal()
     def mouseMoveEvent(self, event):
-        # window = pyautogui.getWindowsWithTitle("DrawWindow")[0]
-        # window.activate()
         global world
         global mousePos
         currentMousePos = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
         relativeMouseCoords = currentMousePos - self.spawnMousePos
-        # correctedLocation = (spawnLocation.x, spawnLocation.y + relativeMouseCoords.x, spawnLocation.z - relativeMouseCoords.y)
         correctedLocation = (0, relativeMouseCoords.x, -relativeMouseCoords.y)
         posDiff = currentMousePos - mousePos
-        # if abs(posDiff.x) >=20 or abs(posDiff.y) >= 20:
-        #     print("PLACE SPLINE POINT NOW!")
-        #     global splineIndex
-        #     coordSpace = unreal.SplineCoordinateSpace
-        #     splineComp = Drawing.get_component_by_class(unreal.SplineComponent)
-        #     oldPointData = unreal.SplineComponent.get_local_location_and_tangent_at_spline_point(splineComp, splineIndex-1)
-        #     global splinePoint
-        #     global previousSplinePoint
-        #     print (f"Spline Index: {splineIndex}")
-        #     # splinePoint = Drawing.get_component_by_class(unreal.SplineComponent).get_spline_point_at(splineIndex, coordSpace.LOCAL)
-        #     newPointData = unreal.SplineComponent.get_local_location_and_tangent_at_spline_point(splineComp, splineIndex)
-        #     Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point(correctedLocation, unreal.SplineCoordinateSpace.LOCAL, update_spline = True)
-        #     mousePos = currentMousePos
-        #     staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
-        #     Drawing.get_component_by_class(unreal.SplineMeshComponent).set_static_mesh(staticMesh)
-        #     splineIndex = splineIndex + 1
-        #     unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(unreal.SplineMeshComponent, '/All/Game', f'SplineMesh{splineIndex - 1}')
-        #     MeshComponents = Drawing.get_components_by_class(unreal.SplineMeshComponent)
-        #     for x in MeshComponents:
-        #         MatchName = x.get_fname()
-        #         MatchName = (f"{MatchName}{splineIndex}")
-        #         print(f"MATCH NAME: {MatchName}")
-        #         if MatchName == f"SplineMesh{splineIndex}":
-        #             print ("NAME MATCH!!!")
-        #             CurrentMesh = x
-        #             # CurrentMesh = Drawing.get_component_by_class(unreal.SplineMeshComponent)
-        #             CurrentMesh.set_start_and_end(oldPointData[0], oldPointData[1], newPointData[0], newPointData[1], update_mesh=True)
-        #             CurrentMesh.set_static_mesh(staticMesh)
-        #             # previousSplinePoint = splinePoint
-        #             print (f"Mesh: {CurrentMesh}")
+
         if abs(posDiff.x) >=20 or abs(posDiff.y) >= 20:
-            # global splineIndex
-            # splineComp = Drawing.get_component_by_class(unreal.SplineComponent)
-            # oldPointData = unreal.SplineComponent.get_local_location_and_tangent_at_spline_point(splineComp, splineIndex-1)
-            # newPointData = unreal.SplineComponent.get_local_location_and_tangent_at_spline_point(splineComp, splineIndex)
-            # Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point(correctedLocation, unreal.SplineCoordinateSpace.LOCAL, update_spline = True)
-            # mousePos = currentMousePos
-            # staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
-            # unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(unreal.SplineMeshComponent, '/All/Game', f'{splineIndex}')
-            # splineIndex = splineIndex + 1
-            # compArray = Drawing.get_components_by_class(unreal.SplineMeshComponent)
-            # compArray.reverse()
-            # CurrentMesh = compArray[0]
-            # CurrentMesh.set_start_and_end(oldPointData[0], oldPointData[1], newPointData[0], newPointData[1], update_mesh=True)
-            # CurrentMesh.set_static_mesh(staticMesh)
-            # root_data_handle = SDS.k2_gather_subobject_data_for_blueprint(blueprint)[0]
             global splineIndex
             coordSpace = unreal.SplineCoordinateSpace
             staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cylinder.Cylinder')
-            Material = unreal.EditorAssetLibrary.load_asset(f'/Game/AnnotationTool/MaterialInstance_{MIIndex-1}.MaterialInstance_{MIIndex-1}')
             splineComp = Drawing.get_component_by_class(unreal.SplineComponent)
             Drawing.get_component_by_class(unreal.SplineComponent).add_spline_point(correctedLocation, unreal.SplineCoordinateSpace.LOCAL, update_spline = True)
             points = []
@@ -659,51 +378,18 @@ class TransparentWindow(QWidget):
                 MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_forward_axis(unreal.SplineMeshAxis.Z)
                 MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_editor_property("cast_shadow", False)
                 MeshActor.get_component_by_class(unreal.SplineMeshComponent).set_material(0, instance)
+                MeshActor.set_actor_hidden_in_game(True)
+                MeshActor.set_actor_enable_collision(False)
  
                 self.meshArray.append(MeshActor)
-                # CurrentMesh = unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(unreal.SplineMeshComponent, '/All/Game', f'{splineIndex}')
-                # print(unreal.SubobjectDataSubsystem(Drawing).create_new_bp_component(unreal.SplineMeshComponent, '/All/Game', f'{splineIndex}'))
-                # CurrentMesh.set_start_and_end(oldPointData[0], oldPointData[1], newPointData[0], newPointData[1], update_mesh=True)
-                # CurrentMesh.set_static_mesh(staticMesh)
- 
- 
-            #     sub_handle, Mesh = self.add_component(
-            #         root_data_handle,
-            #         subsystem=SDS,
-            #         blueprint=Drawing,
-            #         new_class=unreal.SplineMeshComponent,
-            #         name=f"Mesh{splineIndex}")
-            #     assert isinstance(Mesh, unreal.SplineMeshComponent)
-            #     Mesh.set_static_mesh(staticMesh)
-            #     Mesh.set_start_and_end(oldPointData[0], oldPointData[1], newPointData[0], newPointData[1], update_mesh=True)
-            #     # scene_handle, scene = add_component(root_data_handle, SDS, Drawing, unreal.sceneComponent, name='Scene')
-            #     # sub_handle, Mesh = add_component(scene_handle, subsystem=SDS, blueprint=Drawing, new_class=unreal.SplineMeshComponent, name=f"Mesh{splineIndex}")
- 
-            #     assert isinstance()
+
             mousePos = currentMousePos
             splineIndex = splineIndex + 1
 
-
-
-            # compArray = Drawing.get_components_by_class(unreal.SplineMeshComponent)
-            # compArray.reverse()
-            # CurrentMesh = compArray[0]
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Escape:
             self.destroy()
-def launchWindow():
-    if QApplication.instance():
-        for win in (QApplication.allWindows()):
-            if 'toolWindow' in win.objectName():
-                win.destroy()
-    else:
-        app = QApplication(sys.argv)
-    UnrealToolWindow.window = UnrealToolWindow()
-    UnrealToolWindow.window.setObjectName("toolWindow")
-    UnrealToolWindow.window.setWindowTitle("Annotation Tool")
-    UnrealToolWindow.window.show()
-    unreal.parent_external_window_to_slate(UnrealToolWindow.window.winId())
- 
+
 class CalibrateWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -711,51 +397,68 @@ class CalibrateWindow(QWidget):
         self.setMinimumSize(QSize(2000, 2000))
         palette = QtGui.QPalette()
         palette.setColorGroup
-        # palette.setColor(QtGui.QPalette.color, QColor("#01000000"))
         palette.setColor(QtGui.QPalette.ColorRole.Window, "#000000")
         self.setPalette(palette)
         self.setWindowFlags(QtCore.Qt.FramelessWindowHint)
         self.setWindowOpacity(0.1)
-        # self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
  
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton:
             world = unreal.UnrealEditorSubsystem().get_editor_world()
             global screenMidpoint
             screenMidpoint = unreal.WidgetLayoutLibrary.get_mouse_position_on_viewport(world)
-            printScreenMidpoint()
             self.destroy()
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Escape:
             self.destroy()
-launchWindow()
 
-# class SplineActor():
-#     EAS = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
-#     # viewport = unreal.Viewport()
-#     # camLocation = unreal.Viewport.get_view_rotation(viewport)
-#     # camLocation = unreal.EditorLevelLibrary.get_level_viewport_camera_info()
-#     UES = unreal.UnrealEditorSubsystem()
-#     camLocation = unreal.UnrealEditorSubsystem.get_level_viewport_camera_info(UES)
-#     # print (camLocation)
-#     cameraValues = []
-#     for x in camLocation:
-#         # print(type(x))
-#         cameraValues.append(x)
-#     print(cameraValues[0])
-#     vForward = unreal.MathLibrary.get_forward_vector(cameraValues[1])
-#     spawnLocation = cameraValues[0] + (vForward * 1000)
-#     print(f"SPAWN LOCATION: {spawnLocation}")
-#     # unreal.log(camLocation)
-#     mouse = unreal.MouseInputDeviceState()
-#     RMB = mouse.right.__getattribute__("down")
-#     print(RMB)
-#     actorClass = unreal.StaticMeshActor
-#     componentClass = unreal.StaticMeshComponent
-#     location = unreal.Vector(0, 0, 200)
-#     staticMeshActor = EAS.spawn_actor_from_class(actorClass, spawnLocation)
-#     staticMesh = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube.Cube')
-#     staticMeshActor.get_component_by_class(componentClass).set_static_mesh(staticMesh)
-#     # SystemLibrary.line_trace_single(start=camLocation, end=)
- 
-#     DelBase = unreal.KeyEvent
+#find all the tool menus names - we'll use this to register out our own tool menu
+
+tool_menus = unreal.ToolMenus.get()
+
+
+class AnnotationToolMenu():
+    def __init__(self):
+        self.tool_menus = unreal.ToolMenus.get()
+        self.menuOwner = "AnnotationTool"
+        self.tool_menu_name = "LevelEditor.MainMenu.AnnotationTool"
+        self.newMenu = None
+
+    def CreateMenu(self):
+
+        mainMenu = self.tool_menus.find_menu("LevelEditor.MainMenu")
+        self.newMenu = mainMenu.add_sub_menu("AnnotationTool", self.menuOwner, self.menuOwner, "Annotation Tool")
+        self.newMenu = self.tool_menus.register_menu(self.tool_menu_name, "", unreal.MultiBoxType.MENU, True)
+        self.tool_menus.refresh_all_widgets()
+
+    def CreateMenuEntry(self):
+        command = (
+            "from AnnotationPythonScript import InitialiseTool, UnrealToolWindow, ColourWindow, TransparentWindow, CalibrateWindow\n"
+            "InitialiseTool.CreatePath\n"
+            "InitialiseTool.CreateSplineBlueprint()\n"
+            "InitialiseTool.CreateMaterial()\n"
+            "InitialiseTool.CreateMaterialInstance()\n"
+            "InitialiseTool.launchWindow()"
+        )
+
+        menuEntry = unreal.ToolMenuEntryExtensions.init_menu_entry(
+            owner=self.menuOwner,
+            name=self.menuOwner,
+            label="Annotation Tool Utility",
+            tool_tip="Annotation Tool",
+            command_type= unreal.ToolMenuStringCommandType.PYTHON,
+            custom_command_type="",
+            command_string= command
+        )
+
+        icon = "ClassIcon.SplineComponent"
+        menuEntry.set_icon("EditorStyle", icon)
+
+        self.newMenu.add_menu_entry("Utils", menuEntry)
+
+        self.tool_menus.refresh_all_widgets()
+
+if __name__ == "__main__":
+    menu = AnnotationToolMenu()
+    menu.CreateMenu()
+    menu.CreateMenuEntry()
